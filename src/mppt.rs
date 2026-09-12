@@ -25,34 +25,74 @@
  * HSDS    0
  * Checksum
  */
-struct Data {
-    voltage_v: float,
-    current_a: float,
-    power_w: float,
+use serialport::{ClearBuffer, SerialPort};
+use std::io::Read;
+use std::time::Duration;
+
+#[derive(Default, Debug)]
+pub struct VictronData {
+    voltage_v: f32,
+    current_a: f32,
+    power_w: f32,
     load_on: bool,
     // FIXME: add errors, decode the H flags...
 }
 
-use std::fs::File;
-use std::io::prelude::*;
-
-use serialport::SerialPort;
-struct VictronMppt {
-    // file: File,
+pub struct VictronMppt {
+    port: Box<dyn SerialPort>,
+    buffer: [u8; Self::BUFFER_SIZE],
+    data: VictronData,
 }
 
-enum BaudRate
-{
+pub enum BaudRate {
     _19200,
 }
 
 impl VictronMppt {
-    fn new(portname: &str, baud_rate) -> io::Result<Self> {
-        let file = File::open(path)?;
+    const BUFFER_SIZE: usize = 4096;
+
+    pub fn new(portname: &str, baud_rate: BaudRate) -> Self {
+        // let file = File::open(path)?;
+        let baud_rate_int;
+        match baud_rate {
+            BaudRate::_19200 => baud_rate_int = 19_200,
+        }
+
+        // let me have my fucking nonblocking ports damn it
+        let port = serialport::new(portname, baud_rate_int)
+            .timeout(Duration::from_millis(10))
+            .open()
+            // FIXME: tbd...
+            .expect("Failed to open port");
+
+        // Flush after open
+        port.clear(ClearBuffer::Input);
+
+        // This fucking ticks me off
+        let buffer = [0; Self::BUFFER_SIZE];
+        let data = VictronData::default();
+        Self {
+            port: port,
+            buffer: buffer,
+            data: data,
+        }
     }
 
-    fn read()
-    {
+    pub fn poll(&mut self) -> Option<VictronData> {
+        /* Read from the serial port -> feed parser, tbd if line by line... simplest option is to wait for starter line (assume minimal corruption) */
+        /* Create a key - type parser -> "string" : enum for hex/int/uint/f32? */
+        /* - can keep a verbose debug pass through if reuqired (a la cmg rad test terminal) */
 
+        if let Ok(bytes_read) = self.port.read(&mut self.buffer) {
+            if bytes_read <= 0 {
+                return None;
+            }
+
+            /* Feed the machine */
+        }
+
+        return None;
     }
+
+    // fn the_machine()
 }
