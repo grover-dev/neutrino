@@ -1,11 +1,8 @@
 /*
  * Driver for the victron 100/30 MPPT
- */
-
-/* TODO: Stream strings from file -> feed into parser state machine -> extract values -> write to a blackboard*/
-
-use circular_buffer::FixedCircularBuffer;
-/**
+ * See https://www.victronenergy.com/upload/documents/VE.Direct-Protocol-3.34.pdf for reference
+ * Example output:
+ *
  * PID     0xA076
  * FW      174
  * SER#    HQ26097UUZA
@@ -27,44 +24,121 @@ use circular_buffer::FixedCircularBuffer;
  * Checksum
  */
 use serialport::{ClearBuffer, SerialPort};
-use std::default;
-use std::io::{self, BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader};
 use std::time::Duration;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone)]
+#[repr(u8)]
+pub enum OffReason {
+    #[default]
+    Unknown = 0,
+    NoInputPower,
+    SwitchedOffPowerSwitch,
+    SwitchedOffDeviceModeRegister,
+    RemoteInput,
+    ProtectionActive,
+    PayGo,
+    Bms,
+    EngineShutDownDetection,
+    AnalysingInputVoltage,
+}
+
+impl From<u32> for OffReason {
+    fn from(value: u32) -> Self {
+        match value {
+            0x00000001 => OffReason::NoInputPower,
+            0x00000002 => OffReason::SwitchedOffPowerSwitch,
+            0x00000004 => OffReason::SwitchedOffDeviceModeRegister,
+            0x00000008 => OffReason::RemoteInput,
+            0x00000010 => OffReason::ProtectionActive,
+            0x00000020 => OffReason::PayGo,
+            0x00000040 => OffReason::Bms,
+            0x00000080 => OffReason::EngineShutDownDetection,
+            0x00000100 => OffReason::AnalysingInputVoltage,
+            _ => OffReason::Unknown,
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone)]
+pub enum Error {
+    #[default]
+    Unknown,
+    NoError,
+    BatteryVoltageTooHigh,
+    ChargerTemperatureTooHigh,
+    ChargerOverCurrent,
+    ChargerCurrentReversed,
+    BulkTimeLimitExceeded,
+    CurrentSensorIssue,
+    TerminalsOverheated,
+    ConverterIssue,
+    InputVoltageTooHigh,
+    InputCurrentTooHigh,
+    InputShutdownExcessiveBatteryVoltage,
+    InputShutdownCurrentFlowDuringOffMode,
+    LostCommunicationWithDevice,
+    SynchronisedChargingDeviceConfigurationIssue,
+    BmsConnectionLost,
+    NetworkMisconfigured,
+    FactoryCalibrationDataLost,
+    InvalidIncompatibleFirmware,
+    UserSettingsInvalid,
+}
+
+impl From<u32> for Error {
+    fn from(value: u32) -> Self {
+        match value {
+            0 => Error::NoError,
+            2 => Error::BatteryVoltageTooHigh,
+            17 => Error::ChargerTemperatureTooHigh,
+            18 => Error::ChargerOverCurrent,
+            19 => Error::ChargerCurrentReversed,
+            20 => Error::BulkTimeLimitExceeded,
+            21 => Error::CurrentSensorIssue,
+            26 => Error::TerminalsOverheated,
+            28 => Error::ConverterIssue,
+            33 => Error::InputVoltageTooHigh,
+            34 => Error::InputCurrentTooHigh,
+            38 => Error::InputShutdownExcessiveBatteryVoltage,
+            39 => Error::InputShutdownCurrentFlowDuringOffMode,
+            65 => Error::LostCommunicationWithDevice,
+            66 => Error::SynchronisedChargingDeviceConfigurationIssue,
+            67 => Error::BmsConnectionLost,
+            68 => Error::NetworkMisconfigured,
+            116 => Error::FactoryCalibrationDataLost,
+            117 => Error::InvalidIncompatibleFirmware,
+            119 => Error::UserSettingsInvalid,
+            _ => Error::Unknown,
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone)]
 pub struct VictronData {
     voltage_v: f32,
     current_a: f32,
-    power_w: f32,
+    solar_array_voltage_v: f32,
+    solar_array_power_w: f32,
     load_on: bool,
-    // FIXME: add errors, decode the H flags...
+
+    yield_total_kwh: f32,
+    yield_today_kwh: f32,
+    yield_yesterday_kwh: f32,
+    maximum_power_today_w: f32,
+    maximum_power_yesterday_w: f32,
+    day_sequence: u16,
+    off_reason: OffReason,
+    off_reason_raw: u32,
+    error: Error,
+    error_raw: u32,
 }
 
 pub struct VictronMppt {
-    // FIXME: replace this with a buffered read...
     port_reader: BufReader<Box<dyn SerialPort>>,
-
-    // buffer: FixedCircularBuffer<Self::BUFFER_SIZE, u8>,
-    // buffer: FixedCircularBuffer<u8, 1024>,
     data: VictronData,
     pid_found: bool,
 }
-
-// enum MemberVariable {
-//     Voltage,
-//     Current,
-//     Uinteger,
-//     Integer,
-//     Float,
-//     Bool,
-//     Hex,
-// }
-
-// impl KeyTypeParse {
-//     pub fn parse(parse_struct: &[KeyTypeParse]) {
-//         /* FIXME: how to structure this... tbd... */
-//     }
-// }
 
 pub enum BaudRate {
     _19200,
@@ -87,11 +161,11 @@ impl VictronMppt {
             // FIXME: tbd...
             .expect("Failed to open port");
 
-        // Flush after open
-        port.clear(ClearBuffer::Input);
+        // Flush after open, dont care about return
+        let _ = port.clear(ClearBuffer::Input);
 
         /* Wrap the port in a buffered reader */
-        let mut reader = BufReader::new(port);
+        let reader = BufReader::new(port);
 
         // This fucking ticks me off
         // let buffer = FixedCircularBuffer::<u8, 1024>::default();
@@ -105,112 +179,70 @@ impl VictronMppt {
     }
 
     pub fn poll(&mut self) -> Option<VictronData> {
-        /* Read from the serial port -> feed parser, tbd if line by line... simplest option is to wait for starter line (assume minimal corruption) */
-        /* Create a key - type parser -> "string" : enum for hex/int/uint/f32? */
-        /* - can keep a verbose debug pass through if reuqired (a la cmg rad test terminal) */
-        // struct KeyTypeParse {
-        //     key: &'static str,
-        //     var_type: VarType,
-        // }
-
-        // static KEYS: &[KeyTypeParse] = &[
-        //     KeyTypeParse {
-        //         key: "V",
-        //         var_type: VarType::Integer,
-        //     },
-        //     KeyTypeParse {
-        //         key: "I",
-        //         var_type: VarType::Integer,
-        //     },
-        // ];
-
-        // struct KeyTypeParse {
-        //     key: &'static str,
-        //     var_type: VarType,
-        // }
-
-        // static KEYS: &[&'static str] = &[
-        //     "V",
-        //     "I",
-        //     // KeyTypeParse {
-        //     //     key: "V",
-        //     //     var_type: VarType::Integer,
-        //     // },
-        //     // KeyTypeParse {
-        //     //     key: "I",
-        //     //     var_type: VarType::Integer,
-        //     // },
-        // ];
-
-        // let mut buffer: [u8; 1024] = [0; 1024];
         let mut line = String::new(); // <- make this a member to prevent full allocation/deallocation every cyle... maybe pre buffer
 
-        // let mut bool message_started = false;
         if let Ok(bytes_read) = self.port_reader.read_line(&mut line) {
             if bytes_read <= 0 {
                 return None;
             }
 
-            if (line.trim_matches('\r').contains("PID")) {
-                if (!self.pid_found) {
+            if line.trim_matches('\r').contains("PID") {
+                if !self.pid_found {
                     /* Start a new block */
                     self.pid_found = true;
                 } else {
                     /* Return what we have in the buffer, even if its not filled out */
-                    return Some(self.data);
+                    return Some(self.data.clone());
                 }
-                // FIXME: If PID is found again before we extract the full message -> return parsed contents for consumption
-            } else if (self.pid_found) {
-                // for key_value in KEYS {
+            } else if self.pid_found {
                 let key: Option<&str> = line.split_whitespace().nth(0);
+                let value: Option<&str> = line.split_whitespace().nth(1);
 
-                if (key == None) {
+                if key == None || value == None {
                     return None;
                 }
 
-                let integer: i64 = key.unwrap().parse().ok().unwrap_or(0);
-                let float: f32 = key.unwrap().parse().ok().unwrap_or(0.0);
+                let integer: i64 = value.unwrap().parse().ok().unwrap_or(0);
+                let clean_hex = value.unwrap().strip_prefix("0x").unwrap_or(value.unwrap());
+                let hex = u32::from_str_radix(clean_hex, 16).unwrap_or(0);
 
-                if (key == Some("V")) {
-                    self.data.voltage_v = (integer as f32) / 100.0;
+                /* See: https://www.victronenergy.com/upload/documents/VE.Direct-Protocol-3.34.pdf  */
+                if key == Some("V") {
+                    self.data.voltage_v = (integer as f32) / 1000.0;
                 } else if key == Some("A") {
                     // FIXME: double check the units here
-                    self.data.current_a = (integer as f32);
+                    self.data.current_a = integer as f32;
+                } else if key == Some("LOAD") {
+                    self.data.load_on = if value == Some("ON") { true } else { false };
+                } else if key == Some("VPV") {
+                    self.data.solar_array_voltage_v = (integer as f32) / 1000.0;
+                } else if key == Some("PPV") {
+                    self.data.solar_array_power_w = (integer as f32) / 1000.0;
+                } else if key == Some("H19") {
+                    self.data.yield_total_kwh = (integer as f32) / 100.0;
+                } else if key == Some("H20") {
+                    self.data.yield_today_kwh = (integer as f32) / 100.0;
+                } else if key == Some("H21") {
+                    self.data.maximum_power_today_w = integer as f32;
+                } else if key == Some("H22") {
+                    self.data.yield_yesterday_kwh = (integer as f32) / 100.0;
+                } else if key == Some("H23") {
+                    self.data.maximum_power_yesterday_w = integer as f32;
+                } else if key == Some("HDS") {
+                    self.data.day_sequence = integer as u16;
+                } else if key == Some("OR") {
+                    self.data.off_reason_raw = hex;
+                    self.data.off_reason = OffReason::from(hex);
+                } else if key == Some("ERR") {
+                    self.data.error_raw = integer as u32;
+                    self.data.error = Error::from(integer as u32);
                 }
-                // .any(|word| word == key_value.key);
-                // let is_present: bool =
-                //     line.split_whitespace().any(|word| word == key_value.key);
-
-                // if (is_present) {
-                //     /* FIXME: Huzzah! */
-                //     /* How to map to a field tho... */
-                // }
-                // }
-                /* Only reach here if not present: log! */
             } else {
-                /* No PID found, what to do... */
+                /* No PID found, dont do anything yet */
                 return None;
             }
-            // FIXME: I now have a line!
-            // expensive but wahtever, future problem
-            // FIXME: is this even required?
-            // for &byte in &buffer[..bytes_read] {
-            //     self.buffer.push_back(byte);
-            // }
-
-            // FIXME: now we look for PID to anchor our next operation
-            // - try to get a line (terminated by \n) from the circular buffer -> pop value from the buffer if found
-            // - look for PID in test
-
-            /* Feed the machine */
-            // Need to scan for starter characters to align frame?
-            // -> keep feeding state machine until it finds "PID"
-            //    -> once PID is found we can start parsing line by line
-            //    -> read out data from serial into the buffer
         }
 
         return None;
     }
-
-    // fn the_machine()
 }

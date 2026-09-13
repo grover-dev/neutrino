@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-circular-buffer = "2.0.1"
 serialport = "4.10.1"
 
 [profile.release]
