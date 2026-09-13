@@ -158,7 +158,7 @@ impl VictronMppt {
         let port = serialport::new(portname, baud_rate_int)
             .timeout(Duration::from_millis(10))
             .open()
-            // FIXME: tbd...
+            // FIXME: tbd... eventually change this to do best effort sao that we dont crash if the mppt fails to open
             .expect("Failed to open port");
 
         // Flush after open, dont care about return
