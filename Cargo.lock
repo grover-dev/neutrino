@@ -288,6 +288,8 @@ name = "neutrino"
 version = "0.1.0"
 dependencies = [
  "bluer",
+ "serde",
+ "serde_json",
  "serialport",
 ]
 

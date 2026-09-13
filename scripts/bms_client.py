@@ -3,17 +3,24 @@
 # requires-python = ">=3.10"
 # dependencies = ["bleak>=0.22"]
 # ///
-"""Poll the BMS at 1 Hz and stream readings as JSON lines over a TCP socket.
+"""Poll the BMS at 0.5 Hz and push readings as JSON over UDP.
 
-    uv run scripts/bms_server.py              # listen on 127.0.0.1:9000
+The Rust app binds the socket; this sends to it. Being UDP there is no
+connection, so either side can start, stop or restart in any order:
 
-Clients receive one JSON object per line, one per second. The schema is flat and
-fixed -- no arrays, no nulls -- so it maps to a plain struct:
+    uv run scripts/bms_client.py              # sends to 127.0.0.1:9000
 
-    {"seq":1,"ts":"...","voltage_v":13.17,...,"cell_1_v":3.293,...,"temp_1_c":28.8}\n
+One JSON object per datagram, one every 2 seconds. The schema is flat and fixed
+-- no arrays, no nulls -- so it maps to a plain struct:
+
+    {"seq":1,"ts":"...","voltage_v":13.17,...,"cell_1_v":3.293,...,"temp_1_c":28.8}
+
+BLE polling continues whether or not anything is listening. Datagrams sent while
+the consumer is down are simply lost -- `seq` keeps counting, so the consumer can
+see what it missed.
 
 Cell and temp-sensor counts are read once at startup (they don't change), so a
-cycle is 4 Modbus reads at ~190 ms each -- about 760 ms, inside the 1 s budget.
+cycle is 4 Modbus reads at ~190 ms each -- about 760 ms, well inside the 2 s budget.
 
 Protocol details: see BMS_README.md.
 """
@@ -21,6 +28,7 @@ Protocol details: see BMS_README.md.
 import argparse
 import asyncio
 import json
+import socket
 import struct
 import sys
 from datetime import datetime, timezone
@@ -38,8 +46,13 @@ MAX_CELLS, MAX_TEMPS = 16, 10
 # fields every time, zero-filled if the pack reports fewer. Sized for this 4S
 # pack with one sensor; raise if you point it at a bigger one.
 CELL_FIELDS, TEMP_FIELDS = 4, 1
+
 ABSENT = 0xFFFF
 REPLY_TIMEOUT_S = 3.0
+
+# Must fit the receiver's buffer (src/bms.rs reads into [u8; 1500]). A reading
+# is ~430 B, so there is plenty of headroom unless CELL_FIELDS grows a lot.
+MAX_DATAGRAM = 1500
 
 
 def crc16(data: bytes) -> int:
@@ -134,32 +147,35 @@ async def read_reading(bms: Bms, n_cells: int, n_temps: int) -> dict:
     }
 
 
-class Hub:
-    """Fan out JSON lines to connected clients."""
+class Sink:
+    """Fire-and-forget UDP sender: one reading per datagram.
 
-    def __init__(self) -> None:
-        self.clients: set[asyncio.StreamWriter] = set()
+    There is no connection, so the consumer can start, stop and restart freely
+    and this keeps sending regardless. The socket is deliberately left
+    unconnected: a connected UDP socket on Linux reports the ICMP port
+    unreachable from an absent listener as ECONNREFUSED on the next send, which
+    would be pure noise here.
+    """
 
-    async def on_connect(self, _reader, writer: asyncio.StreamWriter) -> None:
-        peer = writer.get_extra_info("peername")
-        self.clients.add(writer)
-        print(f"client connected: {peer} ({len(self.clients)} total)", file=sys.stderr)
+    def __init__(self, host: str, port: int):
+        self.addr = (host, port)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    def send(self, obj: dict) -> bool:
+        payload = json.dumps(obj, separators=(",", ":")).encode()
+        if len(payload) > MAX_DATAGRAM:
+            print(f"reading is {len(payload)} B, larger than the {MAX_DATAGRAM} B "
+                  "receive buffer; dropping", file=sys.stderr)
+            return False
         try:
-            await writer.wait_closed()
-        finally:
-            self.clients.discard(writer)
-            print(f"client gone: {peer} ({len(self.clients)} left)", file=sys.stderr)
+            self.sock.sendto(payload, self.addr)
+            return True
+        except OSError as e:
+            print(f"send failed: {e}", file=sys.stderr)
+            return False
 
-    def broadcast(self, obj: dict) -> None:
-        line = (json.dumps(obj, separators=(",", ":")) + "\n").encode()
-        for w in list(self.clients):
-            if w.is_closing():
-                self.clients.discard(w)
-                continue
-            try:
-                w.write(line)
-            except Exception:  # noqa: BLE001
-                self.clients.discard(w)
+    def close(self) -> None:
+        self.sock.close()
 
 
 async def resolve(dev: str) -> str:
@@ -172,11 +188,9 @@ async def resolve(dev: str) -> str:
 
 
 async def main(args) -> int:
-    hub = Hub()
-    server = await asyncio.start_server(hub.on_connect, args.host, args.port)
-    print(f"listening on {args.host}:{args.port}", file=sys.stderr)
-
+    sink = Sink(args.host, args.port)
     mac = await resolve(args.device)
+
     async with BleakClient(mac) as client:
         bms = Bms(client)
         await client.start_notify(PIPE_RX, bms.on_notify)
@@ -187,9 +201,9 @@ async def main(args) -> int:
         n_temps = min((await bms.read(0x002E, 1))[0], MAX_TEMPS)
         print(f"{n_cells} cells, {n_temps} temp sensors", file=sys.stderr)
 
-        async with server:
-            seq, loop = 0, asyncio.get_running_loop()
-            next_t = loop.time()
+        seq, loop = 0, asyncio.get_running_loop()
+        next_t = loop.time()
+        try:
             while True:
                 try:
                     reading = await read_reading(bms, n_cells, n_temps)
@@ -197,7 +211,7 @@ async def main(args) -> int:
                     print(f"read failed: {e}", file=sys.stderr)
                 else:
                     seq += 1
-                    hub.broadcast({
+                    sink.send({
                         "seq": seq,
                         "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
                         **reading,
@@ -209,14 +223,17 @@ async def main(args) -> int:
                     next_t = loop.time()
                 else:
                     await asyncio.sleep(delay)
+        finally:
+            sink.close()
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--device", default=DEVICE, help="MAC or advertised name")
-    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--host", default="127.0.0.1", help="where to send readings")
     p.add_argument("--port", type=int, default=9000)
-    p.add_argument("--interval", type=float, default=1.0, metavar="SECONDS")
+    p.add_argument("--interval", type=float, default=2.0, metavar="SECONDS",
+                   help="seconds between readings (default 2.0 = 0.5 Hz)")
     try:
         sys.exit(asyncio.run(main(p.parse_args())))
     except KeyboardInterrupt:
