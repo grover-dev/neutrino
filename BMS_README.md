@@ -11,7 +11,8 @@ From a 4S 100Ah pack, firmware `P4S100A-50565-1.50`.
 | TX | `…0e8ac72e0001` — write **without response** |
 | RX | `…0e8ac72e0002` — notify |
 
-Single connection only.
+Single connection only. Requires **BLE 4.0 central** — write-without-response and
+notify, no pairing or encryption.
 
 ## Framing
 
@@ -26,6 +27,9 @@ exception [0x01, 0x83, code:u8, crc_le:u16]                          // 5 B
 - Replies arrive **fragmented** across notifications. Buffer until
   `3 + buf[2] + 2` bytes, then check CRC. Resync by dropping bytes until
   `buf[0] == 0x01 && (buf[1] == 0x03 || buf[1] == 0x83)`.
+- Fragmentation is the serial bridge flushing its buffer (~20 B), not the ATT MTU:
+  the pack accepts MTU 517 and still splits a 21 B reply 20 + 1. Negotiating a
+  larger MTU changes nothing — never size buffers off it.
 
 ## Registers
 
