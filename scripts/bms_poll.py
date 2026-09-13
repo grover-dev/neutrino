@@ -28,17 +28,27 @@ confirmed against values the vendor app displayed for the same pack:
     0x0004  remaining, /100 Ah *              0x0039  MOSFET temp, /10 C
     0x0005  full capacity, /100 Ah            0x003A  aux temp (0xFFFF = absent)
     0x0006  design capacity, /100 Ah          0x00AA  version, 18 bytes ASCII *
-    0x0007  cycle count                       0x00B4  serial, space-padded *
+    0x0007  cycle count                       0x00B4  serial, 20 bytes *
+                                              0x00BE  model, 20 bytes (blank here)
     0x0009  alarm *
     0x000A  protection *
     0x000B  low byte fault code *, high byte status flags
             (0x04 charge MOSFET *, 0x08 discharge MOSFET *)
 
 The map is sparse: 0x003B returns Modbus exception 0x03, and many registers read
-0xC000 filler. Unresolved: the lifetime charge/discharge counters (0x003F/0x0040
-and 0x0043/0x0044 are the likely 32-bit pair but read zero on this pack), the
-ACin and heater bits in 0x000B (never set in any capture), the meaning of 0x004F
-(reads 1), and the model string, which is absent from 0x00AA+60 entirely.
+0xC000 filler.
+
+This is the protocol family behind aiobmsble's buknuwo_bms.py (same UUIDs, same
+0x01 0x03 framing, same Modbus CRC) and gobel_bms.py. Offsets above follow
+buknuwo for status, which matches this pack, and gobel for the 0x00AA device-info
+block; the two disagree on design_capacity and the MOSFET bits, where buknuwo is
+the one that matches here. Neither plugin reads 0x003F, so the lifetime counters
+below have no upstream layout to copy.
+
+Unresolved: lifetime charge/discharge counters (0x003F/0x0040 and 0x0043/0x0044
+are a plausible 32-bit pair, but both read zero on this pack so nothing confirms
+it), the ACin and heater bits in 0x000B (never set in any capture), and 0x004F
+(reads 1).
 """
 
 import argparse
@@ -196,20 +206,19 @@ def ascii_runs(raw: bytes, min_len: int = 3) -> list[tuple[int, str]]:
 async def read_device_info(bms: Bms) -> dict:
     """Device-info strings from 0x00AA.
 
-    Confirmed by dumping 0x00AA+60 on the device: version at 0x00AA (18 bytes),
-    serial at 0x00B4 space-padded through 0x00C7, then zeros, then 0xC000 filler
-    from 0x00CD. There is NO model string in this block -- the app's "AR1.2-MINI
-    BT" comes from somewhere else (or is app-side), so don't invent an offset for
-    it. Still scan for a third run in case other firmware places one here.
+    Layout matches aiobmsble's gobel_bms.py: version at 0x00AA (18 bytes), serial
+    at 0x00B4 (20 bytes), model at 0x00BE (20 bytes). Confirmed by dumping
+    0x00AA+60 here -- version and serial read correctly, and the model slot exists
+    but is space-filled on this firmware, so the app's "AR1.2-MINI BT" is not
+    coming from the BMS. Omit model when blank rather than reporting an empty one.
     """
     raw = regs_to_ascii(await bms.read_regs_chunked(0x00AA, 30))
     info = {
         "version": clean_str(raw[0:18]),
         "serial_number": clean_str(raw[20:40]),
     }
-    rest = [t for _, t in ascii_runs(raw[40:]) if t]
-    if rest:
-        info["model"] = rest[0]
+    if model := clean_str(raw[40:60]):
+        info["model"] = model
     return info
 
 
