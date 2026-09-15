@@ -17,13 +17,11 @@ pub struct PiPicoCommand {
 pub struct PiPicoState {
     commanded_motor_duty_cycle: f32,
     motor_voltage_v: f32,
-    motor_current_a: f32,
+    motor_current_ma: f32,
 }
 
 pub struct PiPico {
     port: Box<dyn SerialPort>,
-    // slip_writer: SlipWriter,
-    // slip_reader : SlipReader
 }
 
 impl PiPico {

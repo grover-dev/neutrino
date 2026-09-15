@@ -1,5 +1,6 @@
 #include "structs.h"
 
+#include <INA226.h>
 #include <PacketSerial.h>
 #include <cmath>
 #include <cstring>
@@ -9,6 +10,10 @@ SLIPPacketSerial packetSerial;
 command_t command{};
 state_t state{};
 
+// FIXME: check the addr
+INA226 INA(0x40);
+
+// FIXME: check which ones work
 constexpr int PwmPin = 15;
 
 void setup() {
@@ -22,7 +27,15 @@ void setup() {
   // Set the function that will handle fully decoded packets
   packetSerial.setPacketHandler(&onPacketReceived);
 
-  Serial.println("Raspberry Pi Pico Serial Initialized!");
+  // Try to set up the INA226
+  Wire.begin();
+  if (!INA.begin() )
+  {
+    Serial.println("could not connect. Fix and Reboot");
+    while(1){}
+  }
+
+  INA.setMaxCurrentShunt(10, 0.002);
 
 }
 
@@ -34,6 +47,10 @@ void loop() {
   const uint8_t duty_cycle =
       state.commanded_motor_duty_cycle * std::numeric_limits<uint8_t>::max();
   analogWrite(PwmPin, duty_cycle);
+
+  state.motor_current_ma = INA.getCurrent_mA();
+  state.motor_voltage_v = INA.getBusVoltage() / 1000;
+
 
   // TODO: measure ina's and shit
   packetSerial.send((uint8_t *)&state, sizeof(state_t));
