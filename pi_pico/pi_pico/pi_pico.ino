@@ -23,6 +23,7 @@ void setup() {
   packetSerial.setPacketHandler(&onPacketReceived);
 
   Serial.println("Raspberry Pi Pico Serial Initialized!");
+
 }
 
 void loop() {
@@ -35,7 +36,7 @@ void loop() {
   analogWrite(PwmPin, duty_cycle);
 
   // TODO: measure ina's and shit
-  Serial.write((uint8_t *)&state, sizeof(state_t));
+  packetSerial.send((uint8_t *)&state, sizeof(state_t));
 
   /* Update at 10 Hz */
   delay(100);
