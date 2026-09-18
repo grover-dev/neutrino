@@ -2,9 +2,6 @@
  * Driver for the Dyness 12V Smart Battery
  * Im cheap so i picked the cheap battery with the bluetooth BMS, thus we now do jank shit to deal with it
  */
-/*
- * TODO: Connect to bluetooth (allow for retries?) -> send command to read data -> parse response
- */
 use serde::Deserialize;
 use std::net::UdpSocket;
 
@@ -81,6 +78,7 @@ impl DynessBms {
             return None;
         };
 
+        /* Ok this is pretty cool, directly translate from field names, so compact! */
         let Ok(data): Result<DynessBmsData, _> = serde_json::from_str(json_str) else {
             return None;
         };

@@ -9,6 +9,8 @@ serialport = "4.10.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 slipspeed = "2.0.0"
+rusqlite = "0.40.2"
+nmea0183 = "0.6.0"
 
 [profile.release]
 opt-level = 3      # Optimize for size (use "s" or "z")
