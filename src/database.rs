@@ -215,6 +215,11 @@ mod tests {
     // --- Database: ":memory:" so no files are touched ---
 
     #[test]
+    fn new_returns_err_on_bad_path() {
+        assert!(Database::new("/nonexistent/dir/x.db").is_err());
+    }
+
+    #[test]
     fn insert_writes_one_row_per_measurement() {
         let mut db = Database::new(":memory:").unwrap();
         db.insert(&Record::from_struct(Utc::now(), &sample())).unwrap();
