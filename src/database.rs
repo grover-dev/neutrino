@@ -175,6 +175,102 @@ impl Database {
     }
 }
 
+// Compiled only under `cargo test`
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Serialize)]
+    struct Pack {
+        voltage: f64,
+        cells: [f64; 2],
+        ok: bool,
+    }
+
+    fn sample() -> Pack {
+        Pack {
+            voltage: 48.0,
+            cells: [3.7, 3.8],
+            ok: true,
+        }
+    }
+
+    // --- flatten / from_struct: no DB needed ---
+
+    // serde_json::Map is a BTreeMap, so keys come out sorted, not in field order
+    #[test]
+    fn flatten_produces_dotted_keys() {
+        let r = Record::from_struct(Utc::now(), &sample());
+        let keys: Vec<&str> = r.measurements.iter().map(|m| m.key.as_str()).collect();
+        assert_eq!(keys, ["cells.0", "cells.1", "ok", "voltage"]);
+    }
+
+    #[test]
+    fn bool_becomes_int() {
+        let r = Record::from_struct(Utc::now(), &sample());
+        let ok = r.measurements.iter().find(|m| m.key == "ok").unwrap();
+        assert!(matches!(ok.data, Data::Int64(1)));
+    }
+
+    // --- Database: ":memory:" so no files are touched ---
+
+    #[test]
+    fn insert_writes_one_row_per_measurement() {
+        let mut db = Database::new(":memory:").unwrap();
+        db.insert(&Record::from_struct(Utc::now(), &sample())).unwrap();
+
+        let n: i64 = db
+            .connection
+            .query_row("SELECT COUNT(*) FROM measurements", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 4);
+    }
+
+    #[test]
+    fn insert_stores_values() {
+        let mut db = Database::new(":memory:").unwrap();
+        db.insert(&Record::from_struct(Utc::now(), &sample())).unwrap();
+
+        let v: f64 = db
+            .connection
+            .query_row(
+                "SELECT value FROM measurements WHERE key = 'cells.1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(v, 3.8);
+    }
+
+    #[test]
+    fn table_is_capped_at_50000_rows() {
+        #[derive(Serialize)]
+        struct One {
+            v: i64,
+        }
+
+        let mut db = Database::new(":memory:").unwrap();
+        // One row per insert; go one past the cap so the trigger fires
+        for i in 0..50_001 {
+            db.insert(&Record::from_struct(Utc::now(), &One { v: i }))
+                .unwrap();
+        }
+
+        let (n, min_id, max_id): (i64, i64, i64) = db
+            .connection
+            .query_row(
+                "SELECT COUNT(*), MIN(id), MAX(id) FROM measurements",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+
+        assert_eq!(n, 50_000);
+        assert_eq!(max_id, 50_001);
+        assert_eq!(min_id, 2); // oldest row (id 1) was dropped
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Old version, kept for reference
 // ---------------------------------------------------------------------------
