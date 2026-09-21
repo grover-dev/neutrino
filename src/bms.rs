@@ -2,7 +2,7 @@
  * Driver for the Dyness 12V Smart Battery
  * Im cheap so i picked the cheap battery with the bluetooth BMS, thus we now do jank shit to deal with it
  */
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::net::UdpSocket;
 
 /// One reading as pushed by scripts/bms_client.py, newline-delimited JSON over
@@ -15,7 +15,7 @@ use std::net::UdpSocket;
 /// (charge MOSFET) and bit 3 (discharge MOSFET) are known.
 ///
 /// See BMS_README.md for the register map.
-#[derive(Deserialize, Default, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub struct DynessBmsData {
     pub seq: u64,
     pub ts: String,

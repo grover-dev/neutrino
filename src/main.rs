@@ -14,12 +14,20 @@ mod pi_pico;
 // use
 use std::{thread, time::Duration};
 
+mod database;
+use database::{Database, Measurement, Record};
+
+use chrono::Utc;
+
 fn main() {
     // println!("Hello, world!");
     // // let mut mppt: mppt::VictronMppt =
     //     mppt::VictronMppt::new("/dev/ttyUSB0", mppt::BaudRate::_19200);
 
     let mut bms: bms::DynessBms = bms::DynessBms::new("127.0.0.1:9000");
+
+    // FIXME: undo this...
+    let mut db = Database::new("telemetry.db").unwrap();
 
     loop {
         // let data: Option<VictronData> = mppt.poll();
@@ -34,6 +42,11 @@ fn main() {
 
         if let Some(value) = data {
             println!("{:?}", value);
+
+            let record = database::Record::from_struct(Utc::now(), &value);
+
+            // good nuff
+            db.insert(&record).unwrap();
         }
     }
 

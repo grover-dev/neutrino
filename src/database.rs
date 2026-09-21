@@ -19,7 +19,7 @@ use serde_json::Value;
 pub enum Data {
     Double(f64),
     Int64(i64),
-    // UInt64(u64),
+    UInt64(u64),
 }
 
 /* Implementing ToSql for my Data type - see the rusqlite use call */
@@ -30,7 +30,8 @@ impl ToSql for Data {
             Data::Double(v) => v.to_sql(),
             Data::Int64(v) => v.to_sql(),
             // SQLite has no u64; cast (or store as f64 / TEXT if you need > i64::MAX)
-            // Data::UInt64(v) => (*v as i64).to_sql(),
+            // Data::UInt64(v) => (*v as i64).to_sql(), <- v is a temporary,
+            Data::UInt64(v) => Ok(ToSqlOutput::from(*v as i64)),
         }
     }
 }
