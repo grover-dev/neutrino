@@ -76,17 +76,22 @@ impl Record {
     pub fn from_json(value: &serde_json::Value) -> Option<Self> {
         let mut measurements: Vec<Measurement> = Vec::new();
 
-        if !value.get("timestamp").is_some() {
-            return None;
+        // FIXME: Maybe get some other sequence identifier? tbd...
+        // `?` on an Option returns None early: missing key, or present but not an integer
+        let timestamp = value.get("timestamp")?.as_i64()?;
+
+        // Flatten every top-level field except the timestamp itself
+        let map = value.as_object()?;
+        for (k, v) in map {
+            if k != "timestamp" {
+                flatten(k, v, &mut measurements);
+            }
         }
 
-        let timestamp = value["timestamp"].as_i64().unwrap_or(0);
-        flatten("", value, &mut measurements);
         Some(Record {
             timestamp,
             measurements,
         })
-
     }
 }
 
@@ -230,6 +235,68 @@ mod tests {
         let r = Record::from_struct(Utc::now().timestamp(), &sample());
         let ok = r.measurements.iter().find(|m| m.key == "ok").unwrap();
         assert!(matches!(ok.data, Data::Int64(1)));
+    }
+
+    // --- from_json ---
+
+    #[test]
+    fn from_json_reads_timestamp() {
+        let v = serde_json::json!({ "timestamp": 1700000000, "voltage": 48.0 });
+        let r = Record::from_json(&v).unwrap();
+        assert_eq!(r.timestamp, 1700000000);
+    }
+
+    #[test]
+    fn from_json_flattens_nested_fields() {
+        let v = serde_json::json!({
+            "timestamp": 1,
+            "pack": { "voltage": 48.0, "cells": [3.7, 3.8] },
+            "ok": true
+        });
+        let r = Record::from_json(&v).unwrap();
+        let keys: Vec<&str> = r.measurements.iter().map(|m| m.key.as_str()).collect();
+        // timestamp is excluded from measurements
+        assert_eq!(keys, ["ok", "pack.cells.0", "pack.cells.1", "pack.voltage"]);
+    }
+
+    #[test]
+    fn from_json_missing_timestamp_is_none() {
+        let v = serde_json::json!({ "voltage": 48.0 });
+        assert!(Record::from_json(&v).is_none());
+    }
+
+    #[test]
+    fn from_json_non_integer_timestamp_is_none() {
+        let v = serde_json::json!({ "timestamp": "abc", "voltage": 48.0 });
+        assert!(Record::from_json(&v).is_none());
+        let v = serde_json::json!({ "timestamp": 1.5, "voltage": 48.0 });
+        assert!(Record::from_json(&v).is_none());
+    }
+
+    #[test]
+    fn from_json_skips_strings_and_nulls() {
+        let v = serde_json::json!({ "timestamp": 1, "name": "bms", "n": null, "v": 3 });
+        let r = Record::from_json(&v).unwrap();
+        let keys: Vec<&str> = r.measurements.iter().map(|m| m.key.as_str()).collect();
+        assert_eq!(keys, ["v"]);
+    }
+
+    #[test]
+    fn from_json_record_inserts() {
+        let v = serde_json::json!({ "timestamp": 42, "voltage": 48.0 });
+        let mut db = Database::new(":memory:").unwrap();
+        db.insert(&Record::from_json(&v).unwrap()).unwrap();
+
+        let (ts, val): (i64, f64) = db
+            .connection
+            .query_row(
+                "SELECT timestamp, value FROM measurements WHERE key = 'voltage'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(ts, 42);
+        assert_eq!(val, 48.0);
     }
 
     // --- Database: ":memory:" so no files are touched ---
