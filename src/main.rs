@@ -43,7 +43,7 @@ fn main() {
         if let Some(value) = data {
             println!("{:?}", value);
 
-            let record = database::Record::from_struct(Utc::now(), &value);
+            let record = database::Record::from_struct(Utc::now().timestamp(), &value);
 
             // good nuff
             db.insert(&record).unwrap();

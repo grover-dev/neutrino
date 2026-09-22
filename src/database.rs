@@ -45,7 +45,7 @@ pub struct Measurement {
 /// What callers pass in: one timestamp + many key/value pairs.
 /// Each pair becomes its own row in `measurements`, all sharing the timestamp.
 pub struct Record {
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: i64, // <- unix time
     pub measurements: Vec<Measurement>,
 }
 
@@ -55,7 +55,7 @@ impl Record {
     /// serde attributes (skip, rename, flatten) apply as usual.
 
     // Type T must implement Serialize trait ->   #[derive(Serialize)]
-    pub fn from_struct<T: Serialize>(timestamp: DateTime<Utc>, struct_data: &T) -> Self {
+    pub fn from_struct<T: Serialize>(timestamp: i64, struct_data: &T) -> Self {
         let mut measurements: Vec<Measurement> = Vec::new();
         /* Start flattening with a null root */
         flatten(
@@ -69,6 +69,24 @@ impl Record {
             timestamp,
             measurements,
         }
+    }
+    // from_struct is for local processing
+    // Add a separate function for converting json data into a record
+    // -> this will then let me run database.rs on a server which accepts json calls
+    pub fn from_json(value: &serde_json::Value) -> Option<Self> {
+        let mut measurements: Vec<Measurement> = Vec::new();
+
+        if !value.get("timestamp").is_some() {
+            return None;
+        }
+
+        let timestamp = value["timestamp"].as_i64().unwrap_or(0);
+        flatten("", value, &mut measurements);
+        Some(Record {
+            timestamp,
+            measurements,
+        })
+
     }
 }
 
@@ -133,12 +151,14 @@ pub struct Database {
 impl Database {
     pub fn new(path: &str) -> rusqlite::Result<Self> {
         let conn = Connection::open(path)?;
-        // FIXME: May need to modify the default timeout here, tbd...
+        // FIXME: May need to modify the default timeout here, tbd..
+        // FIXME: Look at write-ahead-logging, might be a higher performance option
 
+        // timestamp is unix time
         conn.execute(
             "CREATE TABLE IF NOT EXISTS `measurements` (
               `id` integer not null primary key autoincrement,
-              `timestamp` DATETIME null,
+              `timestamp` INTEGER null,
               `key` TEXT null,
               `value` NUMERIC null
             )",
@@ -200,14 +220,14 @@ mod tests {
     // serde_json::Map is a BTreeMap, so keys come out sorted, not in field order
     #[test]
     fn flatten_produces_dotted_keys() {
-        let r = Record::from_struct(Utc::now(), &sample());
+        let r = Record::from_struct(Utc::now().timestamp(), &sample());
         let keys: Vec<&str> = r.measurements.iter().map(|m| m.key.as_str()).collect();
         assert_eq!(keys, ["cells.0", "cells.1", "ok", "voltage"]);
     }
 
     #[test]
     fn bool_becomes_int() {
-        let r = Record::from_struct(Utc::now(), &sample());
+        let r = Record::from_struct(Utc::now().timestamp(), &sample());
         let ok = r.measurements.iter().find(|m| m.key == "ok").unwrap();
         assert!(matches!(ok.data, Data::Int64(1)));
     }
@@ -222,7 +242,8 @@ mod tests {
     #[test]
     fn insert_writes_one_row_per_measurement() {
         let mut db = Database::new(":memory:").unwrap();
-        db.insert(&Record::from_struct(Utc::now(), &sample())).unwrap();
+        db.insert(&Record::from_struct(Utc::now().timestamp(), &sample()))
+            .unwrap();
 
         let n: i64 = db
             .connection
@@ -234,7 +255,8 @@ mod tests {
     #[test]
     fn insert_stores_values() {
         let mut db = Database::new(":memory:").unwrap();
-        db.insert(&Record::from_struct(Utc::now(), &sample())).unwrap();
+        db.insert(&Record::from_struct(Utc::now().timestamp(), &sample()))
+            .unwrap();
 
         let v: f64 = db
             .connection
@@ -257,7 +279,7 @@ mod tests {
         let mut db = Database::new(":memory:").unwrap();
         // One row per insert; go one past the cap so the trigger fires
         for i in 0..50_001 {
-            db.insert(&Record::from_struct(Utc::now(), &One { v: i }))
+            db.insert(&Record::from_struct(Utc::now().timestamp(), &One { v: i }))
                 .unwrap();
         }
 
