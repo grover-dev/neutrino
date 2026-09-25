@@ -170,6 +170,7 @@ impl Database {
             [],
         )?;
 
+        // FIXME: This must only be present on the vehicle, not in the server
         // Add a trigger to cap the table at 50,000 rows
         conn.execute(
             "CREATE TRIGGER IF NOT EXISTS limit_measurements_trigger
