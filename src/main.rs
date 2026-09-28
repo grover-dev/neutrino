@@ -14,8 +14,7 @@ mod pi_pico;
 // use
 use std::{thread, time::Duration};
 
-mod database;
-use database::{Database, Measurement, Record};
+use db::{Database, Measurement, Record};
 
 use chrono::Utc;
 
@@ -45,7 +44,7 @@ fn main() {
 
     //         // FIXME: Probably rework this to be columnar data instead? tbd -> easier to ingest?
     //         // inefficient? very much so, but should be good nuff for now
-    //         let record = database::Record::from_struct(Utc::now().timestamp(), &value);
+    //         let record = db::Record::from_struct(Utc::now().timestamp(), &value);
     //         db.insert(&record).unwrap();
     //     }
     // }
