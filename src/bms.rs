@@ -68,7 +68,6 @@ impl DynessBms {
     }
 
     pub fn poll(&mut self) -> Option<DynessBmsData> {
-        /* This shit is heinous what the fuck rust */
         let Ok((amt, _)) = self.socket.recv_from(&mut self.buffer) else {
             return None;
         };
