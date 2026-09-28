@@ -56,11 +56,9 @@ fn main() {
                 // FIXME: Probably log?
                 _ = db.insert(&record);
             }
-            "command" => { /* FIXME: implement */ }
-            "response" => { /* TODO: handle  */ }
+            "command" => { /* FIXME: implement to fetch data... */ }
+            "response" => { /* TODO: handle? or ignore? tbd... */ }
             _ => continue,
         }
-
-        // TODO: Check if this includes
     }
 }

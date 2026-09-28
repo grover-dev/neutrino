@@ -153,6 +153,13 @@ pub struct Database {
     connection: Connection,
 }
 
+// FIXME: TBD how heinous I want to get, could convert thi sall into a columnar database... :shrug:
+// - either keep adding columns for new fields (ew) or create a sub database for each message...
+//   that becomes heinous to sor tthorugh tho, especially if i need to associate different runs together..
+//   - would need to extened with some datbaase management engine that tracks data associated with a run
+//     (single thread per?) -> this becomes a whole pipeline thing...
+//     - probably naive...
+// - fixme: i dont really care about the db that much, maybe just replace the innards here with influx...
 impl Database {
     pub fn new(path: &str) -> rusqlite::Result<Self> {
         let conn = Connection::open(path)?;
