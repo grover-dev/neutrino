@@ -17,7 +17,7 @@ use std::time::Duration;
 fn main() {
     let duration = Duration::from_millis(50);
 
-    let mut db = Database::new("telemetry.db").unwrap();
+    let mut db = Database::new("telemetry1.db").unwrap();
 
     // FIXME: oh boy how to do socket alloc :kermit-falling:
     let socket = UdpSocket::bind("127.0.0.1:9001").expect("Failed to open socket");
