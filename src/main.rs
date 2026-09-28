@@ -55,19 +55,30 @@ fn main() {
     // Duty cycle can be positive or negative [-1.0, 1.0]
     // - negative indicates reverse
     let mut duty_cycle: f32 = 0.0;
+
+    // Read duty cycles from stdin on a separate thread so polling isn't blocked
+    let (tx, rx) = std::sync::mpsc::channel::<f32>();
+    thread::spawn(move || {
+        for line in std::io::stdin().lines() {
+            match line.unwrap().trim().parse::<f32>() {
+                Ok(value) => tx.send(value.clamp(-1.0, 1.0)).unwrap(),
+                Err(_) => println!("expected a number in [-1.0, 1.0]"),
+            }
+        }
+    });
+
     loop {
         let data: Option<PiPicoState> = pi_pico.poll();
 
-        if let Some(value) = data {
-            println!("{:?}", value);
+        // if let Some(value) = data {
+        //     println!("{:?}", value);
+        // }
+
+        if let Ok(value) = rx.try_recv() {
+            duty_cycle = value;
         }
 
         pi_pico.command_duty_cycle(duty_cycle);
-
-        duty_cycle += 0.1;
-        if duty_cycle > 1.0 {
-            duty_cycle = -1.0;
-        }
 
         thread::sleep(Duration::from_millis(100));
     }
