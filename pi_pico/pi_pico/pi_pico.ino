@@ -68,6 +68,12 @@ void loop() {
     last_command_time_ms = millis();
   }
 
+  if (state.commanded_motor_duty_cycle > 1.0f ||
+      state.commanded_motor_duty_cycle < -1.0f) {
+    // guard against out of bound values
+    state.commanded_motor_duty_cycle = 0.0f;
+  }
+
   /* Netural = 1500 us, max forward is 2000 us, max reverse is 1000 us */
   int period = (state.commanded_motor_duty_cycle * 500) + 1500;
   servo_controller.writeMicroseconds(period);
@@ -87,15 +93,25 @@ void loop() {
 void onPacketReceived(const uint8_t *buffer, size_t size) {
   // 'buffer' now contains your raw, clean data with SLIP encoding removed
   if (size == sizeof(command_t)) {
-    float temp = 0.0f;
+    command_t temp{};
     memcpy((uint8_t *)&temp, buffer, size);
 
-    if (!std::isfinite(temp)) {
+    // FIXME: move this to somewhere else?
+    if (!std::isfinite(temp.motor_duty_cycle)) {
       return;
     }
-    command.motor_duty_cycle = temp;
+    command = temp;
 
     // Record the time of the command!
     last_command_time_ms = millis();
   }
 }
+
+// FIXME: is this required? tbd... may use an external switch to supply power to
+// pico instead. SEE uhubctl <- this can power cycle ports!
+//
+//  setup()
+//  rp2040.wdt_begin(500);   // reboot if not fed within 500
+// ms
+// // loop()
+// rp2040.wdt_reset();
