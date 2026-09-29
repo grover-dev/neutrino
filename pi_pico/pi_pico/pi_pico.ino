@@ -11,7 +11,12 @@ SLIPPacketSerial packetSerial;
 command_t command{};
 state_t state{};
 
+unsigned long last_command_time_ms{};
+// If its been more than 1 second since the last command, safe yourself!
+const unsigned long watchdog_expiration_duration_ms = 1'000;
+
 Servo servo_controller;
+
 // FIXME: check the addr
 // INA226 INA(0x40);
 
@@ -52,17 +57,26 @@ void setup() {
 void loop() {
   /* Update state from commands */
   packetSerial.update();
+
   state.commanded_motor_duty_cycle = command.motor_duty_cycle;
+
+  if (millis() - last_command_time_ms >= watchdog_expiration_duration_ms) {
+    state.commanded_motor_duty_cycle = 0.0f;
+  } else if (millis() < last_command_time_ms) {
+    /* if we overflow -> reset the last command time */
+    // TODO: CONFIRM THIS IS CHILL!
+    last_command_time_ms = millis();
+  }
 
   /* Netural = 1500 us, max forward is 2000 us, max reverse is 1000 us */
   int period = (state.commanded_motor_duty_cycle * 500) + 1500;
   servo_controller.writeMicroseconds(period);
 
-  // analogWrite(PwmPin, duty_cycle);
-
+  // FIXME: bring in INA telemetry later!
   // state.motor_current_ma = INA.getCurrent_mA();
   // state.motor_voltage_v = INA.getBusVoltage() / 1000;
 
+  // FIXME: add watchdog in case comms drop out
   // TODO: measure ina's and shit
   packetSerial.send((uint8_t *)&state, sizeof(state_t));
 
@@ -80,5 +94,8 @@ void onPacketReceived(const uint8_t *buffer, size_t size) {
       return;
     }
     command.motor_duty_cycle = temp;
+
+    // Record the time of the command!
+    last_command_time_ms = millis();
   }
 }

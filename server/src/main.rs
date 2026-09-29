@@ -27,7 +27,7 @@ fn main() {
         /* Start with a sleep so that all continues rate limit the thread */
         thread::sleep(duration);
 
-        let Ok((amt, _)) = socket.recv_from(&mut buffer) else {
+        let Ok((amt, src_addr)) = socket.recv_from(&mut buffer) else {
             continue;
         };
 
@@ -56,7 +56,7 @@ fn main() {
                 // FIXME: Probably log?
                 _ = db.insert(&record);
             }
-            "command" => { /* FIXME: implement to fetch data... */ }
+            "command" => { /* FIXME: implement to fetch data.. -> use src_addr in response */ }
             "response" => { /* TODO: handle? or ignore? tbd... */ }
             _ => continue,
         }

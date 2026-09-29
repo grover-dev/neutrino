@@ -73,11 +73,16 @@ fn main() {
         //     println!("{:?}", value);
         // }
 
+        let old_duty_cycle = duty_cycle;
         if let Ok(value) = rx.try_recv() {
             duty_cycle = value;
         }
 
-        pi_pico.command_duty_cycle(duty_cycle);
+        // fixme: jank in a watchdog failure to test!
+
+        if (duty_cycle != old_duty_cycle) {
+            pi_pico.command_duty_cycle(duty_cycle);
+        }
 
         thread::sleep(Duration::from_millis(100));
     }
