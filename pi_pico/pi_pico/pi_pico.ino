@@ -104,9 +104,12 @@ void onPacketReceived(const uint8_t *buffer, size_t size) {
     command_t temp{};
     memcpy((uint8_t *)&temp, buffer, size);
 
-    // FIXME: move this to somewhere else?
-    if (!std::isfinite(temp.motor_a_duty_cycle) ||
-        !std::isfinite(temp.motor_b_duty_cycle)) {
+    // Written as >= && <= so NaN (all comparisons false) is rejected too, along
+    // with +/-inf and anything outside [-1, 1]
+    auto in_range = [](float x) { return x >= -1.0f && x <= 1.0f; };
+    if (!in_range(temp.motor_a_duty_cycle) ||
+        !in_range(temp.motor_b_duty_cycle)) {
+      // Drop the packet without feeding the watchdog
       return;
     }
     command = temp;
