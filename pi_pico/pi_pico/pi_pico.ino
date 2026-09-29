@@ -15,26 +15,21 @@ unsigned long last_command_time_ms{};
 // If its been more than 1 second since the last command, safe yourself!
 const unsigned long watchdog_expiration_duration_ms = 1'000;
 
-Servo servo_controller;
+Servo motor_a_controller;
+Servo motor_b_controller;
 
 // FIXME: check the addr
 // INA226 INA(0x40);
 
-// FIXME: check which ones work
-constexpr int PwmPin = 15;
+constexpr int motor_a_pwm_pin = 15;
+constexpr int motor_b_pwm_pin = 16;
 
 void setup() {
-  pinMode(PwmPin, OUTPUT);
-  // analogWrite(PwmPin, 0);
-  servo_controller.attach(PwmPin);
+  pinMode(motor_a_pwm_pin, OUTPUT);
+  pinMode(motor_b_pwm_pin, OUTPUT);
 
-  // 1. Set the PWM frequency to 50 Hz
-  // analogWriteFreq(100);
-  // analogWriteFreq(50);
-
-  // 2. Increase resolution to 16-bit (0 to 65535) for precise control
-  // analogWriteRange(65535);
-  // analogWriteResolution(16);
+  motor_a_controller.attach(motor_a_pwm_pin);
+  motor_b_controller.attach(motor_b_pwm_pin);
 
   // This is running over the virtual port, baud rate is meaningless
   Serial.begin(115200);
@@ -58,25 +53,38 @@ void loop() {
   /* Update state from commands */
   packetSerial.update();
 
-  state.commanded_motor_duty_cycle = command.motor_duty_cycle;
+  state.commanded_motor_a_duty_cycle = command.motor_a_duty_cycle;
+  state.commanded_motor_b_duty_cycle = command.motor_b_duty_cycle;
 
   if (millis() - last_command_time_ms >= watchdog_expiration_duration_ms) {
-    state.commanded_motor_duty_cycle = 0.0f;
+    state.commanded_motor_a_duty_cycle = 0.0f;
+    state.commanded_motor_b_duty_cycle = 0.0f;
   } else if (millis() < last_command_time_ms) {
     /* if we overflow -> reset the last command time */
     // TODO: CONFIRM THIS IS CHILL!
     last_command_time_ms = millis();
   }
 
-  if (state.commanded_motor_duty_cycle > 1.0f ||
-      state.commanded_motor_duty_cycle < -1.0f) {
+  if (state.commanded_motor_a_duty_cycle > 1.0f ||
+      state.commanded_motor_a_duty_cycle < -1.0f) {
     // guard against out of bound values
-    state.commanded_motor_duty_cycle = 0.0f;
+    state.commanded_motor_a_duty_cycle = 0.0f;
+    state.commanded_motor_b_duty_cycle = 0.0f;
+  }
+
+  if (state.commanded_motor_b_duty_cycle > 1.0f ||
+      state.commanded_motor_b_duty_cycle < -1.0f) {
+    // guard against out of bound values
+    state.commanded_motor_a_duty_cycle = 0.0f;
+    state.commanded_motor_b_duty_cycle = 0.0f;
   }
 
   /* Netural = 1500 us, max forward is 2000 us, max reverse is 1000 us */
-  int period = (state.commanded_motor_duty_cycle * 500) + 1500;
-  servo_controller.writeMicroseconds(period);
+  const int period_a = (state.commanded_motor_a_duty_cycle * 500) + 1500;
+  motor_a_controller.writeMicroseconds(period_a);
+
+  const int period_b = (state.commanded_motor_b_duty_cycle * 500) + 1500;
+  motor_b_controller.writeMicroseconds(period_b);
 
   // FIXME: bring in INA telemetry later!
   // state.motor_current_ma = INA.getCurrent_mA();
@@ -97,7 +105,8 @@ void onPacketReceived(const uint8_t *buffer, size_t size) {
     memcpy((uint8_t *)&temp, buffer, size);
 
     // FIXME: move this to somewhere else?
-    if (!std::isfinite(temp.motor_duty_cycle)) {
+    if (!std::isfinite(temp.motor_a_duty_cycle) ||
+        !std::isfinite(temp.motor_b_duty_cycle)) {
       return;
     }
     command = temp;

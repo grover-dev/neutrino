@@ -80,8 +80,13 @@ fn main() {
 
         // fixme: jank in a watchdog failure to test!
 
-        if (duty_cycle != old_duty_cycle) {
-            pi_pico.command_duty_cycle(duty_cycle);
+        if duty_cycle != old_duty_cycle {
+            let command = pi_pico::PiPicoCommand {
+                motor_a_duty_cycle: duty_cycle,
+                motor_b_duty_cycle: duty_cycle,
+            };
+
+            pi_pico.command_duty_cycle(&command);
         }
 
         thread::sleep(Duration::from_millis(100));

@@ -8,14 +8,18 @@ use std::mem::size_of;
 use std::time::Duration;
 
 // Has to match the format in pi_pico/pi_pico/structs.h
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)] // Ensures a stable memory layout
 pub struct PiPicoCommand {
-    motor_duty_cycle: f32,
+    pub motor_a_duty_cycle: f32,
+    pub motor_b_duty_cycle: f32,
 }
 
 #[derive(Default, Debug, Copy, Clone)]
+#[repr(C)] // Ensures a stable memory layout
 pub struct PiPicoState {
-    commanded_motor_duty_cycle: f32,
+    commanded_motor_a_duty_cycle: f32,
+    commanded_motor_b_duty_cycle: f32,
     motor_voltage_v: f32,
     motor_current_ma: f32,
 }
@@ -37,9 +41,10 @@ impl PiPico {
         Self { port: port }
     }
 
-    pub fn command_duty_cycle(&mut self, duty_cycle: f32) {
+    // FIXME: replace this with a struct in the future...
+    pub fn command_duty_cycle(&mut self, command: &PiPicoCommand) {
         /* Convert to bytes, slip encode, and send */
-        let bytes: [u8; 4] = duty_cycle.to_ne_bytes();
+        let bytes: &[u8] = bytemuck::bytes_of(command);
         let frame = encode_frame(&bytes);
         let _ = self.port.write_all(&frame);
     }
