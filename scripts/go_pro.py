@@ -18,6 +18,7 @@ async def main():
         print("Yay! I'm connected via USB, opened, and ready to send / get data now!")
         while True:
             _ = 1
+        # FIXME: time to go pro!
 
 
 # 2. Run the asynchronous function via the event loop
