@@ -69,8 +69,8 @@ fn parse_bytes(parser: &mut Parser, buffer: &[u8]) -> Result<GpsData, GpsError> 
                     longitude: rmc.longitude.as_f64(),
                     speed_knots: rmc.speed.as_knots(), // FIXME: may replace this? tbd..
                     course_deg_true: rmc.course.clone().map(|s| s.degrees), // rust what the hell is this
-                    active: true, // FIXME: delete
-                    magnetic_correction: rmc.course.clone().map(|s| s.degrees),
+                    active: true,                                           // FIXME: delete
+                    magnetic_correction: None, // FIXME: nmea0183 is cucking me rmc.magnetic.clone().map(|s| s.degrees),
                 });
             }
             // The crate gives back RMC(None) when there's no fix
@@ -100,7 +100,10 @@ $GNGLL,,,,,053513.00,V,N*55\r\n";
     #[test]
     fn no_fix() {
         let mut parser = Parser::new();
-        assert_eq!(parse_bytes(&mut parser, NO_FIX).unwrap_err(), GpsError::NoFix);
+        assert_eq!(
+            parse_bytes(&mut parser, NO_FIX).unwrap_err(),
+            GpsError::NoFix
+        );
     }
 
     // Captured with a 3D fix, 12 satellites used
