@@ -8,7 +8,7 @@ use mppt::VictronData;
 mod bms;
 use bms::DynessBmsData;
 
-use crate::pi_pico::PiPicoState;
+use crate::{gps::GpsError, pi_pico::PiPicoState};
 
 mod pi_pico;
 // use
@@ -16,9 +16,19 @@ use std::{thread, time::Duration};
 
 use db::{Database, Measurement, Record};
 
+mod gps;
 use chrono::Utc;
 
 fn main() {
+    let mut gps = gps::Gps::new("/dev/ttyUSB0");
+    loop {
+        match gps.update() {
+            Ok(value) => println!("{:?}", value),
+            Err(GpsError::NoData) => {}
+            Err(GpsError::NoFix) => println!("gps: no fix"),
+        }
+    }
+
     // // println!("Hello, world!");
     // // // let mut mppt: mppt::VictronMppt =
     // //     mppt::VictronMppt::new("/dev/ttyUSB0", mppt::BaudRate::_19200);
@@ -49,46 +59,46 @@ fn main() {
     //     }
     // }
 
-    let mut pi_pico: pi_pico::PiPico = pi_pico::PiPico::new("/dev/ttyACM0");
+    // let mut pi_pico: pi_pico::PiPico = pi_pico::PiPico::new("/dev/ttyACM0");
 
-    // Duty cycle can be positive or negative [-1.0, 1.0]
-    // - negative indicates reverse
-    let mut duty_cycle: f32 = 0.0;
+    // // Duty cycle can be positive or negative [-1.0, 1.0]
+    // // - negative indicates reverse
+    // let mut duty_cycle: f32 = 0.0;
 
-    // Read duty cycles from stdin on a separate thread so polling isn't blocked
-    let (tx, rx) = std::sync::mpsc::channel::<f32>();
-    thread::spawn(move || {
-        for line in std::io::stdin().lines() {
-            match line.unwrap().trim().parse::<f32>() {
-                Ok(value) => tx.send(value.clamp(-1.0, 1.0)).unwrap(),
-                Err(_) => println!("expected a number in [-1.0, 1.0]"),
-            }
-        }
-    });
+    // // Read duty cycles from stdin on a separate thread so polling isn't blocked
+    // let (tx, rx) = std::sync::mpsc::channel::<f32>();
+    // thread::spawn(move || {
+    //     for line in std::io::stdin().lines() {
+    //         match line.unwrap().trim().parse::<f32>() {
+    //             Ok(value) => tx.send(value.clamp(-1.0, 1.0)).unwrap(),
+    //             Err(_) => println!("expected a number in [-1.0, 1.0]"),
+    //         }
+    //     }
+    // });
 
-    loop {
-        let data: Option<PiPicoState> = pi_pico.poll();
+    // loop {
+    //     let data: Option<PiPicoState> = pi_pico.poll();
 
-        // if let Some(value) = data {
-        //     println!("{:?}", value);
-        // }
+    //     // if let Some(value) = data {
+    //     //     println!("{:?}", value);
+    //     // }
 
-        let old_duty_cycle = duty_cycle;
-        if let Ok(value) = rx.try_recv() {
-            duty_cycle = value;
-        }
+    //     let old_duty_cycle = duty_cycle;
+    //     if let Ok(value) = rx.try_recv() {
+    //         duty_cycle = value;
+    //     }
 
-        // fixme: jank in a watchdog failure to test!
+    //     // fixme: jank in a watchdog failure to test!
 
-        if duty_cycle != old_duty_cycle {
-            let command = pi_pico::PiPicoCommand {
-                motor_a_duty_cycle: duty_cycle,
-                motor_b_duty_cycle: duty_cycle,
-            };
+    //     if duty_cycle != old_duty_cycle {
+    //         let command = pi_pico::PiPicoCommand {
+    //             motor_a_duty_cycle: duty_cycle,
+    //             motor_b_duty_cycle: duty_cycle,
+    //         };
 
-            pi_pico.command_duty_cycle(&command);
-        }
+    //         pi_pico.command_duty_cycle(&command);
+    //     }
 
-        thread::sleep(Duration::from_millis(100));
-    }
+    //     thread::sleep(Duration::from_millis(100));
+    // }
 }
