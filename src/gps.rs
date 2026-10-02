@@ -11,7 +11,6 @@ pub struct Gps {
     parser: Parser,
 }
 
-// FIXME: add checksunm checking?
 #[derive(Default, Debug, Copy, Clone)]
 pub struct GpsData {
     latitude: f64,
@@ -58,9 +57,13 @@ pub enum GpsError {
     NoData,
     /// Got an RMC sentence, but the receiver doesn't have a position fix yet
     NoFix,
+    /// No RMC came in, and at least one sentence failed its checksum
+    ChecksumError,
 }
 
 fn parse_bytes(parser: &mut Parser, buffer: &[u8]) -> Result<GpsData, GpsError> {
+    let mut checksum_error = false;
+
     for result in parser.parse_from_bytes(buffer) {
         match result {
             Ok(ParseResult::RMC(Some(rmc))) => {
@@ -75,12 +78,18 @@ fn parse_bytes(parser: &mut Parser, buffer: &[u8]) -> Result<GpsData, GpsError> 
             }
             // The crate gives back RMC(None) when there's no fix
             Ok(ParseResult::RMC(None)) => return Err(GpsError::NoFix),
+            // nmea0183 only gives back strings for errors, this one has to match exactly
+            Err("Checksum error!") => checksum_error = true,
             // Don't care about the other sentences
             Ok(_) | Err(_) => {}
         }
     }
 
-    Err(GpsError::NoData)
+    if checksum_error {
+        Err(GpsError::ChecksumError)
+    } else {
+        Err(GpsError::NoData)
+    }
 }
 
 #[cfg(test)]
@@ -130,6 +139,17 @@ $GNGLL,3352.33760,N,11822.65778,W,064632.00,A,A*65\r\n";
         assert!((data.longitude - -118.377630).abs() < 1e-5);
         assert!((data.speed_knots - 0.062).abs() < 1e-3);
         assert_eq!(data.course_deg_true, None);
+    }
+
+    #[test]
+    fn bad_checksum() {
+        // FIX's RMC line with the checksum changed from 7F
+        let bad = b"$GNRMC,064632.00,A,3352.33760,N,11822.65778,W,0.062,,021026,,,A*00\r\n";
+        let mut parser = Parser::new();
+        assert_eq!(
+            parse_bytes(&mut parser, bad).unwrap_err(),
+            GpsError::ChecksumError
+        );
     }
 
     #[test]

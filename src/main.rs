@@ -26,6 +26,7 @@ fn main() {
             Ok(value) => println!("{:?}", value),
             Err(GpsError::NoData) => {}
             Err(GpsError::NoFix) => println!("gps: no fix"),
+            Err(GpsError::ChecksumError) => println!("gps: checksum error"),
         }
     }
 
