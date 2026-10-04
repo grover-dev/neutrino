@@ -1,1 +1,3 @@
 // FIXME: add statistics tracking here...
+// - use this to disable/enable camera streaming?
+// - can access the gps loc as a backup

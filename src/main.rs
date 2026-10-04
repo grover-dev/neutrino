@@ -12,6 +12,7 @@ use std::{thread, time::Duration};
 
 use db::{Database, Measurement, Record};
 
+mod nav_manager;
 mod power_manager;
 use chrono::Utc;
 
