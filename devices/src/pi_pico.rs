@@ -1,3 +1,5 @@
+// FIXME: RENAME AND RESTRUCTURE TO BE MORE GENERIC -> STRUCT PASSED IN EXTERNALLY!
+
 use serialport::{ClearBuffer, SerialPort};
 /**
  * Interface to a pi pico, used to drive motors and monitor power consumption
