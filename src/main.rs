@@ -2,21 +2,16 @@
  * fuck it we ball
  */
 // #![no_std]
-mod mppt;
+use devices::{bms, gps, mppt, pi_pico};
 use mppt::VictronData;
-
-mod bms;
 use bms::DynessBmsData;
+use gps::GpsError;
+use pi_pico::PiPicoState;
 
-use crate::{gps::GpsError, pi_pico::PiPicoState};
-
-mod pi_pico;
-// use
 use std::{thread, time::Duration};
 
 use db::{Database, Measurement, Record};
 
-mod gps;
 use chrono::Utc;
 
 fn main() {

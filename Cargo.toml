@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = [".", "db", "server"]
+members = [".", "db", "devices", "server"]
 
 [dependencies]
 db = { path = "db" }
+devices = { path = "devices" }
 bluer = "0.17.4"
 serialport = "4.10.1"
 serde = { version = "1", features = ["derive"] }
