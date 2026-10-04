@@ -1,13 +1,18 @@
+use derive_more::{Add, Sub};
 use devices::gps::GpsData;
 use devices::pico_digital_compass::Quaternion;
 use std::f32::consts::PI;
 
+use std::ops::Sub;
+
 // FIXME: move this? tbd...
+#[derive(PartialEq, Add, Sub)]
 pub struct Position {
     latitude: f64,
     longitude: f64,
 }
 
+// Implement the Add trait for Point
 // pub struct Position {
 //     latitude: f64,
 //     longitude: f64,
@@ -107,10 +112,12 @@ impl NavManager {
 
     // FIXME: how to indicate course :hmm:
     fn calculate_target_course(
-        current_position: &Position,
-        target_position: &Position,
+        current_position: Position,
+        target_position: Position,
         gps_true_course: &f32,
     ) -> f32 {
+        // FIXME: are ya fucking kidding me rust?
+        let delta_position: Position = target_position - current_position;
         // FIXME:
 
         // FIXME:

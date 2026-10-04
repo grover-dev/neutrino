@@ -17,6 +17,7 @@ slipspeed = "2.0.0"
 nmea0183 = "0.6.0"
 chrono = "0.4.45"
 bytemuck = {version = "1.25.2", features = ["derive"]}
+derive_more = {version = "2.1.1", features = ["full"]}
 
 [profile.release]
 opt-level = 3      # Optimize for size (use "s" or "z")
