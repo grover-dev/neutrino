@@ -30,7 +30,8 @@ pub struct NavManagerInputData {
     // FIXME: replace this with just raw gps data? tbd...
     gps_speed_knots: f32,
     gps_course_degrees_true: Option<f32>,
-    gps_magnetic_correction: Option<f32>, // FIXME: may to this by hand from lat/long?
+    gps_magnetic_correction_opt: Option<f32>, // FIXME: may to this by hand from lat/long?
+    gps_magnetic_correction: f32,             // FIXME: may to this by hand from lat/long?
 }
 
 pub struct NavManagerTelem {
@@ -57,23 +58,10 @@ impl NavManager {
         //     // FIXME: zero out the motors? tbd... GPS data may drop out temporarily, dont want to kill it permanently
         //     return;
         // };
-
-        let r: f32 = input.digital_compass_heading_mag_north.w;
-        let i: f32 = input.digital_compass_heading_mag_north.i;
-        let j: f32 = input.digital_compass_heading_mag_north.j;
-        let k: f32 = input.digital_compass_heading_mag_north.k;
-
-        // FIXME: Double chekc this math...
-        // Calculate yaw
-        let siny_cosp: f32 = 2.0 * (r * k + i * j);
-        let cosy_cosp: f32 = 1.0 - 2.0 * (j * j + k * k);
-        let yaw: f32 = siny_cosp.atan2(cosy_cosp);
-
-        // Convert to degrees and map to 0-360 clockwise
-        let heading: f32 = -yaw * 180.0 / PI;
-        if heading < 0.0 {
-            heading += 360.0;
-        }
+        let heading = Self::calculate_heading(
+            &input.digital_compass_heading_mag_north,
+            &input.gps_magnetic_correction,
+        );
 
         // FIXME: Add logic to handle position + velocity calc here...
         // - can add deadreckoning if useful? tbd...
@@ -84,5 +72,31 @@ impl NavManager {
                 longitude: 0.0,
             },
         };
+    }
+
+    fn calculate_heading(
+        digital_compass_heading_mag_north: &devices::pico_digital_compass::Quaternion,
+        true_north_correction: &f32,
+    ) -> f32 {
+        let r: f32 = digital_compass_heading_mag_north.w;
+        let i: f32 = digital_compass_heading_mag_north.i;
+        let j: f32 = digital_compass_heading_mag_north.j;
+        let k: f32 = digital_compass_heading_mag_north.k;
+
+        // FIXME: Double chekc this math...
+        // Calculate yaw
+        let siny_cosp: f32 = 2.0 * (r * k + i * j);
+        let cosy_cosp: f32 = 1.0 - 2.0 * (j * j + k * k);
+        let yaw: f32 = siny_cosp.atan2(cosy_cosp);
+
+        // Convert to degrees and map to 0-360 clockwise
+        let mut heading: f32 = -yaw * 180.0 / PI;
+        if heading < 0.0 {
+            heading += 360.0;
+        }
+
+        // FIXME: need to double check the reference frame here...
+        heading += true_north_correction;
+        return heading;
     }
 }
