@@ -19,17 +19,22 @@ pub struct NavManager {
 }
 
 pub struct NavManagerInputCommand {
-    // FIXME: place holder, not sure how to do this rn...
+    // Target position combined with our course gives us our target course (trajectory planning)
     target_position: Position,
     motors_enabled: bool, // TBD if the nav manager needs to be aware...
 }
 
 pub struct NavManagerInputData {
+    // Heading tells us what our motor force vectors are
     digital_compass_heading_mag_north: devices::pico_digital_compass::Quaternion,
 
     // FIXME: replace this with just raw gps data? tbd...
+
+    // Speed and course give us our course vector
+    // - FIXME: may calculate the true course using starlink data as a back up? tbd... requires integration over time, more complex algo... problem for later
     gps_speed_knots: f32,
-    gps_course_degrees_true: Option<f32>,
+    gps_course_degrees_true_opt: Option<f32>,
+    gps_course_degrees_true: f32,
     gps_magnetic_correction_opt: Option<f32>, // FIXME: may to this by hand from lat/long?
     gps_magnetic_correction: f32,             // FIXME: may to this by hand from lat/long?
 }
@@ -53,12 +58,12 @@ pub struct NavManagerTelem {
 }
 
 impl NavManager {
-    pub fn step(input: NavManagerInputData, command: NavManagerInputCommand) -> NavManagerTelem {
+    pub fn step(input: &NavManagerInputData, command: &NavManagerInputCommand) -> NavManagerTelem {
         // let Some(gps) = gps_data else {
         //     // FIXME: zero out the motors? tbd... GPS data may drop out temporarily, dont want to kill it permanently
         //     return;
         // };
-        let heading = Self::calculate_heading(
+        let heading: f32 = Self::calculate_current_heading(
             &input.digital_compass_heading_mag_north,
             &input.gps_magnetic_correction,
         );
@@ -74,7 +79,7 @@ impl NavManager {
         };
     }
 
-    fn calculate_heading(
+    fn calculate_current_heading(
         digital_compass_heading_mag_north: &devices::pico_digital_compass::Quaternion,
         true_north_correction: &f32,
     ) -> f32 {
@@ -98,5 +103,17 @@ impl NavManager {
         // FIXME: need to double check the reference frame here...
         heading += true_north_correction;
         return heading;
+    }
+
+    // FIXME: how to indicate course :hmm:
+    fn calculate_target_course(
+        current_position: &Position,
+        target_position: &Position,
+        gps_true_course: &f32,
+    ) -> f32 {
+        // FIXME:
+
+        // FIXME:
+        return 0.0;
     }
 }
