@@ -14,15 +14,40 @@ pub struct Position {
     longitude: f64,
 }
 
-// Implement the Add trait for Point
-// pub struct Position {
-//     latitude: f64,
-//     longitude: f64,
-// }
+// FIXME: Move this to a different crate
+pub struct pid {
+    kp: f64,
+    ki: f64,
+    integral: f64,
+    integral_windup_limit: f64,
+}
+
+impl pid {
+    pub fn new(kp: f64, ki: f64, integral_windup_limit: f64) -> Self {
+        Self {
+            kp: kp,
+            ki: ki,
+            integral: 0.0,
+            integral_windup_limit: integral_windup_limit,
+        }
+    }
+
+    pub fn step(&mut self, error: f64) -> f64 {
+        let p = error * self.kp;
+        self.integral += (error * self.ki)
+            .min(self.integral_windup_limit)
+            .max(-self.integral_windup_limit);
+        let i = self.integral;
+
+        let output = p + i;
+        return output;
+    }
+}
 
 pub struct NavManager {
-    last_position: Position,
-    last_heading: f64, // F
+    // last_position: Position,
+    // last_heading: f64, // F
+    pid_velocity: pid,
 }
 
 pub struct NavManagerInputCommand {
@@ -69,20 +94,36 @@ pub struct NavManagerTelem {
     target_position: Position,
     distance_to_target_nm: f64, // FIXME: Standardize on nautical miles vs km... probably do natuical miles...
 
-                                // mag north corrected to true north using GPS data
-                                // digital_compass_heading_true_north: devices::pico_digital_compass::Quaternion,
-                                // current_velocity_vector: ... how to structure this... dLat dLong?
+    starboard_differential_duty: f64,
+    port_differential_duty: f64,
+
+    starboard_duty: f64,
+    port_duty: f64,
 }
 
 // FIXME: will need to extend with automatic collision avoidance
 // - need to also test the shit out of this...
 // TODO: Extend with dead reckoning too
 impl NavManager {
-    pub fn step(input: &NavManagerInputData, command: &NavManagerInputCommand) -> NavManagerTelem {
+    pub fn new(kp: f64, ki: f64, integral_windup_limit: f64) -> Self {
+        return Self {
+            pid_velocity: pid::new(kp, ki, integral_windup_limit),
+        };
+    }
+
+    pub fn step(
+        &mut self,
+        input: &NavManagerInputData,
+        command: &NavManagerInputCommand,
+    ) -> NavManagerTelem {
         // let Some(gps) = gps_data else {
         //     // FIXME: zero out the motors? tbd... GPS data may drop out temporarily, dont want to kill it permanently
         //     return;
-        // };
+        // };new(kp: f64, ki: f64, integral_windup_limit: f64) -> Self {
+        //     return Self {
+        //         pid_steer: pid::new(kp, ki, integral_windup_limit),
+        //     };
+        // }
         let current_heading: f32 = Self::calculate_current_heading(
             &input.digital_compass_heading_mag_north,
             &input.gps_magnetic_correction,
@@ -102,6 +143,36 @@ impl NavManager {
         // FIXME: Add logic to handle position + velocity calc here...
         // - can add deadreckoning if useful? tbd...
 
+        // FIXME: This assumes bearing = heading -> if hti si s not the case the logic needs to change
+        // more positive = need to turn more clockwise
+        let mut delta_bearing: f64 = target_bearing - current_bearing;
+
+        // jank but whatever, rework later
+        if delta_bearing >= 180.0 {
+            /* Normalize back to +/- 180 */
+            delta_bearing -= 360.0;
+        } else if delta_bearing <= -180.0 {
+            delta_bearing += 360.0;
+        }
+
+        /* Clockwise error = turn to starboard, otherwise turn to port */
+        /* PID could probably help make this more aggressive, with small error this will only gently turn more to starboard.
+         * Probably fine over long distances but tbd... */
+        // rnage of [-1.0, 1.0], where negative is a reverse. Probably fine but need to test.
+        let starboard_differential_duty = -(delta_bearing / 180.0);
+        let port_differential_duty = (delta_bearing / 180.0);
+
+        /*
+         * Time to calculate the velocity vector! subject to power limits...
+         */
+
+        // let force = self.pid_velocity.step(delta_bearing);
+        // FIXME: Now add a basic pid to
+
+        // now feed the delta bearing into a PID? need to shit out correction angle -> apply to thrust from the engines?
+        // i feel confident that the current heading is important but i have not figured out how to apply it exactly yet
+        // FIXME: for now assume bearing ~ heading, this will not be true but should be a decent approximation for now
+
         return NavManagerTelem {
             current_position: input.current_position,
             current_heading: current_heading as f64,
@@ -109,6 +180,10 @@ impl NavManager {
             target_bearing: target_bearing,
             target_position: command.target_position,
             distance_to_target_nm: distance_to_target_nm,
+            starboard_differential_duty: starboard_differential_duty,
+            port_differential_duty: port_differential_duty,
+            starboard_duty: starboard_duty,
+            port_duty: port_duty,
         };
     }
     // formulas from https://www.movable-type.co.uk/scripts/latlong.html
@@ -137,6 +212,11 @@ impl NavManager {
         // FIXME: need to double check the reference frame here...
         heading += true_north_correction;
         return heading;
+        // new(kp: f64, ki: f64, integral_windup_limit: f64) -> Self {
+        //         return Self {
+        //             pid_steer: pid::new(kp, ki, integral_windup_limit),
+        //         };
+        //     }
     }
 
     // FIXME: Use this to detect when we have arrived at our target
@@ -157,7 +237,7 @@ impl NavManager {
 
         // c = 2 ⋅ atan2( √a, √(1−a) )
         let c = 2.0 * (a.sqrt().atan2((1.0 - a).sqrt()));
-        let r = 6371e3 * KM_TO_NM;
+        let r = 6371.0 * KM_TO_NM;
 
         // d = R ⋅ c
         return r * c;
