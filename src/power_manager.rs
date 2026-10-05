@@ -29,6 +29,7 @@ pub struct PowerData {
 
 pub struct PowerCommand {
     // TODO: Extend with more graceful/capable load shed
+    //      - useful for extending useful life when weather/day-night information is available
     motor_permitted_to_run: bool,
     // FIXME:
 }
