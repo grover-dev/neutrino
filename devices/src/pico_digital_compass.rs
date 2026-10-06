@@ -1,6 +1,7 @@
 // driver to read the digital compass (bno085) ic from a pi pico
 // FIXME: rework the existing pi_pico.rs to act as a generic pi pico interface -> template that shi
 // FIXME: need to add a calibration routine, enter it via command
+#[derive(Default, Debug)]
 pub struct Quaternion {
     pub w: f32,
     pub i: f32,

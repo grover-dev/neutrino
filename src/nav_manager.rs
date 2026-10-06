@@ -8,7 +8,7 @@ const KM_TO_NM: f64 = 0.539957;
 // FIXME:
 
 // FIXME: move this? tbd...
-#[derive(PartialEq, Add, Sub, Clone, Copy)]
+#[derive(PartialEq, Add, Sub, Clone, Copy, Default, Debug)]
 pub struct Position {
     latitude: f64,
     longitude: f64,
@@ -50,12 +50,15 @@ pub struct NavManager {
     pid_velocity: pid,
 }
 
+#[derive(Default, Debug)]
 pub struct NavManagerInputCommand {
     // Target position combined with our course gives us our target course (trajectory planning)
     target_position: Position,
-    motors_enabled: bool, // TBD if the nav manager needs to be aware...
+    // motors_enabled: bool, // TBD if the nav manager needs to be aware...
+    speed_setpoint_knots: f32,
 }
 
+#[derive(Default, Debug)]
 pub struct NavManagerInputData {
     // Heading tells us what our motor force vectors are
     digital_compass_heading_mag_north: devices::pico_digital_compass::Quaternion,
@@ -72,6 +75,7 @@ pub struct NavManagerInputData {
     gps_magnetic_correction: f32,             // FIXME: may to this by hand from lat/long?
 }
 
+#[derive(Default, Debug)]
 pub struct NavManagerTelem {
     // motor_a_duty_cycle: f32,
     // motor_b_duty_cycle: f32,
@@ -160,13 +164,24 @@ impl NavManager {
          * Probably fine over long distances but tbd... */
         // rnage of [-1.0, 1.0], where negative is a reverse. Probably fine but need to test.
         let starboard_differential_duty = -(delta_bearing / 180.0);
-        let port_differential_duty = (delta_bearing / 180.0);
+        let port_differential_duty = delta_bearing / 180.0;
 
         /*
          * Time to calculate the velocity vector! subject to power limits...
          */
+        let speed_error: f64 = (command.speed_setpoint_knots - input.gps_speed_knots) as f64;
 
-        // let force = self.pid_velocity.step(delta_bearing);
+        // FIXME: add velocity feedback, tbd on power, may be another loop, or bound it? tbd...
+        let force = self.pid_velocity.step(speed_error);
+
+        // at full force, cap the effect of diff steer? TBD...
+        let duty_cycle = force.max(-0.9).min(0.9);
+
+        let starboard_duty = (duty_cycle + starboard_differential_duty)
+            .max(-1.0)
+            .min(1.0);
+        let port_duty = (duty_cycle + port_differential_duty).max(-1.0).min(1.0);
+
         // FIXME: Now add a basic pid to
 
         // now feed the delta bearing into a PID? need to shit out correction angle -> apply to thrust from the engines?

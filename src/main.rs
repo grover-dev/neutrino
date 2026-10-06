@@ -17,14 +17,24 @@ mod power_manager;
 use chrono::Utc;
 
 fn main() {
-    let mut gps = gps::Gps::new("/dev/ttyUSB0");
+    // let mut gps = gps::Gps::new("/dev/ttyUSB0");
+    // loop {
+    //     match gps.update() {
+    //         Ok(value) => println!("{:?}", value),
+    //         Err(GpsError::NoData) => {}
+    //         Err(GpsError::NoFix) => println!("gps: no fix"),
+    //         Err(GpsError::ChecksumError) => println!("gps: checksum error"),
+    //     }
+    // }
+    let mut nav_manager = nav_manager::NavManager::new(1.0, 0.01, 1.0);
+    let mut input = nav_manager::NavManagerInputData::default();
+    let mut command = nav_manager::NavManagerInputCommand::default();
+
     loop {
-        match gps.update() {
-            Ok(value) => println!("{:?}", value),
-            Err(GpsError::NoData) => {}
-            Err(GpsError::NoFix) => println!("gps: no fix"),
-            Err(GpsError::ChecksumError) => println!("gps: checksum error"),
-        }
+        let nav_telem: nav_manager::NavManagerTelem = nav_manager.step(&input, &command);
+        println!("{:#?}", nav_telem);
+
+        thread::sleep(Duration::from_millis(100));
     }
 
     // // println!("Hello, world!");
