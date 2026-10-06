@@ -8,7 +8,7 @@ use gps::GpsError;
 use mppt::VictronData;
 use pi_pico::PiPicoState;
 
-use std::{thread, time::Duration};
+use std::{net::UdpSocket, thread, time::Duration};
 
 use db::{Database, Measurement, Record};
 
@@ -41,6 +41,11 @@ fn main() {
 
     command.speed_setpoint_knots = 4.0;
 
+    // visualizer link (scripts/boat_vis.py). bind an ephemeral port so the
+    // visualizer can reply to us on this same socket later
+    let vis_socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+    let vis_addr = "127.0.0.1:5005";
+
     loop {
         nav_telem = nav_manager.step(&input, &command);
 
@@ -52,6 +57,17 @@ fn main() {
         input.current_position = model_output.new_position;
         input.gps_course_degrees_true = model_output.new_heading_true as f32;
         input.gps_magnetic_correction = 0.0; // fixme: update!
+
+        // heading is degrees clockwise from true north, same as the visualizer expects
+        let vis_msg = serde_json::json!({
+            "lat": input.current_position.latitude,
+            "lon": input.current_position.longitude,
+            "heading": model_output.new_heading_true,
+            "dest_lat": command.target_position.latitude,
+            "dest_lon": command.target_position.longitude,
+        });
+        // fire and forget, the visualizer may not be running
+        let _ = vis_socket.send_to(vis_msg.to_string().as_bytes(), vis_addr);
         // println!("{:#?}", nav_telem);
 
         thread::sleep(Duration::from_millis(100));
