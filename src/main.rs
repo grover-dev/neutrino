@@ -35,8 +35,8 @@ fn main() {
     let mut nav_telem = nav_manager::NavManagerTelem::default();
 
     command.target_position = Position {
-        latitude: 1.0,
-        longitude: 1.0,
+        latitude: 0.05,
+        longitude: 0.05,
     };
 
     command.speed_setpoint_knots = 4.0;
