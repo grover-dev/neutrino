@@ -12,9 +12,11 @@ use std::{thread, time::Duration};
 
 use db::{Database, Measurement, Record};
 
+use crate::{boat_model::BoatModelOutput, nav_manager::Position};
+
+mod boat_model;
 mod nav_manager;
 mod power_manager;
-use chrono::Utc;
 
 fn main() {
     // let mut gps = gps::Gps::new("/dev/ttyUSB0");
@@ -26,13 +28,31 @@ fn main() {
     //         Err(GpsError::ChecksumError) => println!("gps: checksum error"),
     //     }
     // }
+    let mut boat_model = boat_model::BoatModel::new(100.0, 0.1, 0.1, 1.0, 0.2, 0.2);
     let mut nav_manager = nav_manager::NavManager::new(1.0, 0.01, 1.0);
     let mut input = nav_manager::NavManagerInputData::default();
     let mut command = nav_manager::NavManagerInputCommand::default();
+    let mut nav_telem = nav_manager::NavManagerTelem::default();
+
+    command.target_position = Position {
+        latitude: 1.0,
+        longitude: 1.0,
+    };
+
+    command.speed_setpoint_knots = 4.0;
 
     loop {
-        let nav_telem: nav_manager::NavManagerTelem = nav_manager.step(&input, &command);
-        println!("{:#?}", nav_telem);
+        nav_telem = nav_manager.step(&input, &command);
+
+        let model_output: BoatModelOutput =
+            boat_model.step(nav_telem.starboard_duty, nav_telem.port_duty);
+
+        input.digital_compass_heading_mag_north = model_output.heading_quaternion;
+        input.gps_speed_knots = model_output.speed_knots as f32;
+        input.current_position = model_output.new_position;
+        input.gps_course_degrees_true = model_output.new_heading_true as f32;
+        input.gps_magnetic_correction = 0.0; // fixme: update!
+        // println!("{:#?}", nav_telem);
 
         thread::sleep(Duration::from_millis(100));
     }

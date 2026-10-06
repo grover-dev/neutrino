@@ -10,8 +10,8 @@ const KM_TO_NM: f64 = 0.539957;
 // FIXME: move this? tbd...
 #[derive(PartialEq, Add, Sub, Clone, Copy, Default, Debug)]
 pub struct Position {
-    latitude: f64,
-    longitude: f64,
+    pub latitude: f64,
+    pub longitude: f64,
 }
 
 // FIXME: Move this to a different crate
@@ -53,26 +53,26 @@ pub struct NavManager {
 #[derive(Default, Debug)]
 pub struct NavManagerInputCommand {
     // Target position combined with our course gives us our target course (trajectory planning)
-    target_position: Position,
+    pub target_position: Position,
     // motors_enabled: bool, // TBD if the nav manager needs to be aware...
-    speed_setpoint_knots: f32,
+    pub speed_setpoint_knots: f32,
 }
 
 #[derive(Default, Debug)]
 pub struct NavManagerInputData {
     // Heading tells us what our motor force vectors are
-    digital_compass_heading_mag_north: devices::pico_digital_compass::Quaternion,
+    pub digital_compass_heading_mag_north: devices::pico_digital_compass::Quaternion,
 
     // FIXME: replace this with just raw gps data? tbd..
-    current_position: Position,
+    pub current_position: Position,
 
     // Speed and course give us our course vector
     // - FIXME: may calculate the true course using starlink data as a back up? tbd... requires integration over time, more complex algo... problem for later
-    gps_speed_knots: f32,
-    gps_course_degrees_true_opt: Option<f32>,
-    gps_course_degrees_true: f32,
-    gps_magnetic_correction_opt: Option<f32>, // FIXME: may to this by hand from lat/long?
-    gps_magnetic_correction: f32,             // FIXME: may to this by hand from lat/long?
+    pub gps_speed_knots: f32,
+    pub gps_course_degrees_true_opt: Option<f32>,
+    pub gps_course_degrees_true: f32,
+    pub gps_magnetic_correction_opt: Option<f32>, // FIXME: may to this by hand from lat/long?
+    pub gps_magnetic_correction: f32,             // FIXME: may to this by hand from lat/long?
 }
 
 #[derive(Default, Debug)]
@@ -101,8 +101,14 @@ pub struct NavManagerTelem {
     starboard_differential_duty: f64,
     port_differential_duty: f64,
 
-    starboard_duty: f64,
-    port_duty: f64,
+    pub starboard_duty: f64,
+    pub port_duty: f64,
+}
+
+impl NavManagerTelem {
+    pub fn starboard_differential_duty_mut(&mut self) -> &mut f64 {
+        &mut self.starboard_differential_duty
+    }
 }
 
 // FIXME: will need to extend with automatic collision avoidance
