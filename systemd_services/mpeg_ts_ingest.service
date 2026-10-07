@@ -1,0 +1,14 @@
+[Unit]
+Description=Ingest and store an MPEG TS stream
+After=network.target
+# FIXME: anything else else?
+
+
+[Service]
+Type=simple
+ExecStart= /usr/local/bin/mpeg_ts_ingest.sh
+Restart=on-failure
+User=nobody
+
+[Install]
+WantedBy=multi-user.target
