@@ -34,7 +34,7 @@ impl Gps {
 
         // Flush after open, dont care about return
         let _ = port.clear(ClearBuffer::Input);
-        let mut parser = Parser::new();
+        let parser = Parser::new();
         Self {
             port: port,
             parser: parser,

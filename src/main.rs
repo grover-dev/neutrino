@@ -3,10 +3,10 @@
  */
 // #![no_std]
 use bms::DynessBmsData;
+use devices::pico_motor_control::MotorControllerState;
 use devices::{bms, gps, mppt, pi_pico};
 use gps::GpsError;
 use mppt::VictronData;
-use pi_pico::PiPicoState;
 
 use std::{net::UdpSocket, thread, time::Duration};
 
@@ -19,15 +19,15 @@ mod nav_manager;
 mod power_manager;
 
 fn main() {
-    // let mut gps = gps::Gps::new("/dev/ttyUSB0");
-    // loop {
-    //     match gps.update() {
-    //         Ok(value) => println!("{:?}", value),
-    //         Err(GpsError::NoData) => {}
-    //         Err(GpsError::NoFix) => println!("gps: no fix"),
-    //         Err(GpsError::ChecksumError) => println!("gps: checksum error"),
-    //     }
-    // }
+    let mut gps = gps::Gps::new("/dev/ttyUSB0");
+    loop {
+        match gps.update() {
+            Ok(value) => println!("{:?}", value),
+            Err(GpsError::NoData) => {}
+            Err(GpsError::NoFix) => println!("gps: no fix"),
+            Err(GpsError::ChecksumError) => println!("gps: checksum error"),
+        }
+    }
     let mut boat_model = boat_model::BoatModel::new(100.0, 0.1, 0.1, 1.0, 0.2, 0.2);
     let mut nav_manager = nav_manager::NavManager::new(1.0, 0.01, 1.0);
     let mut input = nav_manager::NavManagerInputData::default();
@@ -121,7 +121,7 @@ fn main() {
     // });
 
     // loop {
-    //     let data: Option<PiPicoState> = pi_pico.poll();
+    //     let data: Option<MotorControllerState> = pi_pico.poll();
 
     //     // if let Some(value) = data {
     //     //     println!("{:?}", value);
