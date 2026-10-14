@@ -10,14 +10,21 @@ pub struct Quaternion {
     pub k: f32,
 }
 
+// enum DigitalCompassState
+// {
+//     Running,
+
+// }
+
 // FIXME: Need to add a command struct...
 
 #[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-#[repr(C)] // Ensures a stable memory layout
+#[repr(C, packed)] // Ensures a stable memory layout
 pub struct DigitalCompassTelemetry {
     // Orientation of the sensor relative to the magnetic north pole
     // -> this needs to be combined with gps mangetic adjustment to get the real north pole
     real_orientation: Quaternion,
+    calibration_state: u8, // FIXME: replace with an enum?
 }
 
 pub struct DigitalCompassCommand {

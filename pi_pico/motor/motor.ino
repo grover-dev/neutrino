@@ -59,6 +59,7 @@ void loop() {
   if (millis() - last_command_time_ms >= watchdog_expiration_duration_ms) {
     state.commanded_motor_a_duty_cycle = 0.0f;
     state.commanded_motor_b_duty_cycle = 0.0f;
+    state.commanded_motors_enabled_bool = 0;
   } else if (millis() < last_command_time_ms) {
     /* if we overflow -> reset the last command time */
     // TODO: CONFIRM THIS IS CHILL!
@@ -70,6 +71,7 @@ void loop() {
     // guard against out of bound values
     state.commanded_motor_a_duty_cycle = 0.0f;
     state.commanded_motor_b_duty_cycle = 0.0f;
+    state.commanded_motors_enabled_bool = 0;
   }
 
   if (state.commanded_motor_b_duty_cycle > 1.0f ||
@@ -77,14 +79,21 @@ void loop() {
     // guard against out of bound values
     state.commanded_motor_a_duty_cycle = 0.0f;
     state.commanded_motor_b_duty_cycle = 0.0f;
+    state.commanded_motors_enabled_bool = 0;
   }
 
   /* Netural = 1500 us, max forward is 2000 us, max reverse is 1000 us */
   const int period_a = (state.commanded_motor_a_duty_cycle * 500) + 1500;
-  motor_a_controller.writeMicroseconds(period_a);
-
   const int period_b = (state.commanded_motor_b_duty_cycle * 500) + 1500;
-  motor_b_controller.writeMicroseconds(period_b);
+
+  if (state.commanded_motors_enabled_bool > 0) {
+    motor_a_controller.writeMicroseconds(period_a);
+    motor_b_controller.writeMicroseconds(period_b);
+  } else {
+    // FIXME: Double check that this is chill
+    motor_a_controller.writeMicroseconds(0);
+    motor_b_controller.writeMicroseconds(0);
+  }
 
   // FIXME: bring in INA telemetry later!
   // state.motor_current_ma = INA.getCurrent_mA();

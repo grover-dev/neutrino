@@ -4,6 +4,7 @@
 pub struct MotorControllerCommand {
     pub motor_a_duty_cycle: f32,
     pub motor_b_duty_cycle: f32,
+    pub enable_motors_bool: u32,
 }
 
 #[derive(Default, Debug, Copy, Clone)]
@@ -11,4 +12,5 @@ pub struct MotorControllerCommand {
 pub struct MotorControllerState {
     commanded_motor_a_duty_cycle: f32,
     commanded_motor_b_duty_cycle: f32,
+    commanded_enable_motors_bool: u32,
 }
