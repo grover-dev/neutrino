@@ -8,8 +8,10 @@
 
 """Read GoPro HERO11 config / telemetry over USB, then start the webcam stream.
 
-Usage: uv run scripts/go_pro.py [--res 1080] [--fov wide] [--show]
+Usage: uv run scripts/go_pro.py [--res 1080] [--fov wide] [--show] [--forward HOST:PORT ...]
 Without --show the stream runs (for VLC / another consumer at udp://@:8554) until Enter.
+--forward relays the stream to remote consumers (e.g. a LAN or Tailscale IP), which
+then read udp://@:PORT; it's repeatable and works with or without --show.
 HERO11 webcam mode is fixed at 30 fps (max 1080p30) regardless of the camera's video fps setting.
 """
 
@@ -53,6 +55,10 @@ STREAM_PORT = 8554
 DECODE_PORT = 8555
 # ffmpeg options: don't die on UDP buffer overrun, use a large receive FIFO
 DECODE_URL = f"udp://127.0.0.1:{DECODE_PORT}?overrun_nonfatal=1&fifo_size=50000000"
+# The camera sends 1316-byte datagrams (7 x 188-byte TS packets). Over Tailscale (MTU
+# 1280) those IP-fragment, and losing either fragment drops all 7 packets, so the
+# relay splits them on TS packet boundaries: 1128 bytes (6 packets) + 28 header < 1280
+FORWARD_CHUNK = 6 * 188
 
 START_ATTEMPTS = 3  # webcam start tries (resetting the camera between) before giving up
 STALL_SECONDS = 5.0  # with --show: no stream bytes for this long -> restart the webcam
@@ -60,6 +66,7 @@ BAD_STATUS_POLLS = 2  # consecutive polls with webcam not streaming -> restart t
 
 # HERO11 Black only reports setting IDs <= 181; aspect ratio is folded into the
 # resolution value (e.g. 27 = 5.3K 4:3). Values verified with gopro_state_diff.py.
+
 # Capture format
 VIDEO_SETTINGS = [
     SettingId.VIDEO_RESOLUTION,  # 27 = 5.3K 4:3, 1 = 4K, 4 = 2.7K
@@ -147,7 +154,7 @@ class LinkHealth:
     def __init__(self) -> None:
         self.last_contact: float | None = None  # monotonic time of last successful camera poll
         self.poll_failures = 0  # consecutive failed polls
-        self.last_stream_data: float | None = None  # monotonic time stream bytes last arrived (--show only)
+        self.last_stream_data: float | None = None  # monotonic time stream bytes last arrived (needs the relay)
         self.webcam_status: WebcamStatus | None = None
 
     def as_json(self, webcam: "Webcam") -> dict:
@@ -169,7 +176,7 @@ class LinkHealth:
             "state": state,
             "seconds_since_contact": age(self.last_contact),
             "consecutive_poll_failures": self.poll_failures,
-            "seconds_since_stream_data": stream_age,  # null without --show (stream isn't received)
+            "seconds_since_stream_data": stream_age,  # null without --show / --forward (stream isn't received)
             "stall_timeout_s": STALL_SECONDS,
             "webcam_status": json_value(self.webcam_status),
             "webcam_restarts": webcam.restarts,
@@ -215,6 +222,7 @@ class Webcam:
                 await self._wait_ready()
                 # Take control from the on-camera UI (e.g. an open menu)
                 await self._gopro.http_command.set_camera_control(mode=CameraControl.EXTERNAL)
+                # This pipes traffic out from the gopro to the specified port on the local network
                 response = await self._gopro.http_command.webcam_start(
                     resolution=self._resolution,
                     fov=self._fov,
@@ -379,17 +387,20 @@ def ensure_udp_port_free(port: int) -> None:
 
 
 class UdpRelay:
-    """Forwards the camera's UDP stream to a local port, counting bytes received.
+    """Forwards the camera's UDP stream to each destination (the local decoder for
+    --show, remote --forward hosts), counting bytes received.
 
     OpenCV doesn't expose how many bytes it receives, so the relay measures the
-    stream's network bitrate (video plus a few % of MPEG-TS overhead).
+    stream's network bitrate (video plus a few % of MPEG-TS overhead). The count
+    also drives stall detection.
     """
 
-    def __init__(self, listen_port: int, forward_port: int) -> None:
+    def __init__(self, listen_port: int, destinations: list[tuple[str, int]]) -> None:
         self._rx = bind_udp(listen_port)
         self._rx.settimeout(0.5)  # so the thread notices stop requests
         self._tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._forward = ("127.0.0.1", forward_port)
+        self._destinations = destinations
+        self._failing: set[tuple[str, int]] = set()  # destinations whose last send failed
         self.byte_count = 0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -402,7 +413,21 @@ class UdpRelay:
             except TimeoutError:
                 continue
             self.byte_count += len(data)
-            self._tx.sendto(data, self._forward)
+            chunks = [data[i : i + FORWARD_CHUNK] for i in range(0, len(data), FORWARD_CHUNK)]
+            for destination in self._destinations:
+                # A failing destination (e.g. ENETUNREACH while Tailscale is down) mustn't
+                # kill the thread or starve the others; log once per outage, not per datagram
+                try:
+                    for chunk in chunks:
+                        self._tx.sendto(chunk, destination)
+                except OSError as e:
+                    if destination not in self._failing:
+                        self._failing.add(destination)
+                        print(f"[{time.strftime('%H:%M:%S')}] relay to {destination[0]}:{destination[1]} failing: {e!r}")
+                else:
+                    if destination in self._failing:
+                        self._failing.discard(destination)
+                        print(f"[{time.strftime('%H:%M:%S')}] relay to {destination[0]}:{destination[1]} recovered")
 
     def close(self) -> None:
         self._stop.set()
@@ -411,15 +436,28 @@ class UdpRelay:
         self._tx.close()
 
 
-async def display_stream(webcam: Webcam, health: LinkHealth) -> None:
-    """Show the stream until q / Esc is pressed or the window is closed.
+async def watch_stream(relay: UdpRelay, webcam: Webcam, health: LinkHealth) -> None:
+    """Without --show (forwarding only): restart the webcam if no stream bytes arrive
+    for STALL_SECONDS. display_stream does this itself with --show."""
+    stall_bytes, last_data_time = relay.byte_count, time.monotonic()
+    while True:
+        await asyncio.sleep(0.5)
+        now = time.monotonic()
+        if relay.byte_count != stall_bytes:
+            stall_bytes, last_data_time = relay.byte_count, now
+            health.last_stream_data = now
+        elif now - last_data_time > STALL_SECONDS:
+            await webcam.restart(f"no stream data for {STALL_SECONDS:.0f}s")
+            last_data_time = time.monotonic()
+
+
+async def display_stream(webcam: Webcam, health: LinkHealth, relay: UdpRelay) -> None:
+    """Show the stream (relayed to DECODE_PORT) until q / Esc is pressed or the window is closed.
 
     If no stream bytes arrive for STALL_SECONDS, restart the webcam and reopen the reader.
+    The relay stays up across webcam restarts; only the reader is reopened.
     """
     print("Opening stream (q or Esc to quit)...")
-    # Relay must be running before OpenCV opens, as opening blocks until data arrives.
-    # It stays up across webcam restarts; only the reader is reopened.
-    relay = UdpRelay(STREAM_PORT, DECODE_PORT)
     reader: FrameReader | None = None
     window = "GoPro"
     shown = False
@@ -472,7 +510,6 @@ async def display_stream(webcam: Webcam, health: LinkHealth) -> None:
     finally:
         if reader is not None:
             reader.close()
-        relay.close()
         cv.destroyAllWindows()
 
 
@@ -493,9 +530,10 @@ async def main(args: argparse.Namespace):
     for sig in (signal.SIGTERM, signal.SIGHUP):
         loop.add_signal_handler(sig, main_task.cancel)
 
-    if args.show:
-        # Fail before touching the camera if a stale process holds the stream ports
+    # Fail before touching the camera if a stale process holds the stream ports
+    if args.show or args.forward:
         ensure_udp_port_free(STREAM_PORT)
+    if args.show:
         ensure_udp_port_free(DECODE_PORT)
 
     async with WiredGoPro() as gopro:
@@ -514,32 +552,64 @@ async def main(args: argparse.Namespace):
         webcam = Webcam(gopro, RESOLUTIONS[args.res], FOVS[args.fov])
         sender = TelemetrySender(
             args.telemetry_port,
-            {"resolution": args.res, "fov": args.fov, "protocol": "TS", "port": STREAM_PORT},
+            {
+                "resolution": args.res,
+                "fov": args.fov,
+                "protocol": "TS",
+                "port": STREAM_PORT,
+                "forward": [f"{host}:{port}" for host, port in args.forward],
+            },
         )
         health = LinkHealth()
-        monitor = ui = None
+        monitor = ui = watcher = None
+        relay: UdpRelay | None = None
         try:
             await webcam.start()
             print(f"Sending JSON telemetry to udp://127.0.0.1:{args.telemetry_port} every {args.poll}s")
             monitor = asyncio.create_task(monitor_state(webcam, gopro, args.poll, sender, health))
+            destinations = ([("127.0.0.1", DECODE_PORT)] if args.show else []) + args.forward
+            if destinations:
+                # Must be running before OpenCV opens, as opening blocks until data arrives
+                relay = UdpRelay(STREAM_PORT, destinations)
+                for host, port in args.forward:
+                    print(f"Forwarding stream to udp://{host}:{port}")
             if args.show:
-                ui = asyncio.create_task(display_stream(webcam, health))
+                ui = asyncio.create_task(display_stream(webcam, health, relay))
             else:
-                print(f"Streaming to udp://@:{STREAM_PORT}, press Enter to stop")
+                if relay is not None:
+                    watcher = asyncio.create_task(watch_stream(relay, webcam, health))
+                    print("Press Enter to stop")
+                else:
+                    print(f"Streaming to udp://@:{STREAM_PORT}, press Enter to stop")
                 ui = asyncio.create_task(wait_for_enter())
-            # The monitor only finishes by raising (a failed webcam restart); either way, stop
-            done, _ = await asyncio.wait({ui, monitor}, return_when=asyncio.FIRST_COMPLETED)
+            # The monitor and watcher only finish by raising (a failed webcam restart); either way, stop
+            done, _ = await asyncio.wait(
+                {t for t in (ui, monitor, watcher) if t is not None}, return_when=asyncio.FIRST_COMPLETED
+            )
             for task in done:
                 task.result()  # re-raise any error
         finally:
             # Cancel and await the tasks so the display's own cleanup (window,
-            # relay sockets) finishes before the webcam is stopped
-            tasks = [t for t in (ui, monitor) if t is not None]
+            # reader) finishes before the relay and webcam are stopped
+            tasks = [t for t in (ui, monitor, watcher) if t is not None]
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            if relay is not None:
+                relay.close()
             sender.close()
             await webcam.stop()
+
+
+def forward_address(value: str) -> tuple[str, int]:
+    """argparse type for --forward: HOST:PORT, with HOST resolved once (IPv4) at startup."""
+    host, sep, port = value.rpartition(":")
+    if not sep or not host or not port.isdigit() or not 0 < int(port) < 65536:
+        raise argparse.ArgumentTypeError(f"expected HOST:PORT, got {value!r}")
+    try:
+        return socket.gethostbyname(host), int(port)
+    except OSError as e:
+        raise argparse.ArgumentTypeError(f"can't resolve {host!r}: {e}") from e
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -549,6 +619,14 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--show", action="store_true", help="display the stream in an OpenCV window")
     parser.add_argument("--poll", type=float, default=5.0, help="camera state poll interval in seconds (default 5)")
     parser.add_argument("--telemetry-port", type=int, default=9595, help="localhost UDP port for JSON telemetry")
+    parser.add_argument(
+        "--forward",
+        type=forward_address,
+        action="append",
+        default=[],
+        metavar="HOST:PORT",
+        help="relay the MPEG-TS stream over UDP to HOST:PORT (repeatable), e.g. a LAN or Tailscale IP",
+    )
     return parser.parse_args()
 
 
