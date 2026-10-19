@@ -3,6 +3,7 @@
  */
 // FIXME: Tbd if this is good enough
 use nmea0183::{ParseResult, Parser};
+use serde::Serialize;
 use serialport::{ClearBuffer, SerialPort};
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ pub struct Gps {
     parser: Parser,
 }
 
-#[derive(Default, Debug, Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone, Serialize)]
 pub struct GpsData {
     latitude: f64,
     longitude: f64,
