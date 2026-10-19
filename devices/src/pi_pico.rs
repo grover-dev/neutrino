@@ -1,18 +1,25 @@
-use bytemuck::NoUninit;
+use bytemuck::Pod;
 use serialport::{ClearBuffer, SerialPort};
 /**
  * Interface to a pi pico, used to drive motors and monitor power consumption
  */
 use slipspeed::{SlipReader, encode_frame};
 use std::io::Cursor;
-use std::mem::size_of;
+use std::marker::PhantomData;
 use std::time::Duration;
 
-pub struct PiPico {
-    port: Box<dyn SerialPort>,
+/// Describes the wire protocol of a specific pico firmware
+pub trait PicoDevice {
+    type Telemetry: Pod;
+    type Command: Pod;
 }
 
-impl PiPico {
+pub struct PiPico<D: PicoDevice> {
+    port: Box<dyn SerialPort>,
+    _device: PhantomData<D>,
+}
+
+impl<D: PicoDevice> PiPico<D> {
     pub fn new(portname: &str) -> Self {
         let port = serialport::new(portname, 115_200)
             .timeout(Duration::from_millis(10))
@@ -22,18 +29,20 @@ impl PiPico {
 
         // Flush after open, dont care about return
         let _ = port.clear(ClearBuffer::Input);
-        Self { port: port }
+        Self {
+            port: port,
+            _device: PhantomData,
+        }
     }
 
-    // FIXME: replace this with a struct in the future...
-    pub fn command_duty_cycle<T: NoUninit>(&mut self, command: &T) {
+    pub fn send_command(&mut self, command: &D::Command) {
         /* Convert to bytes, slip encode, and send */
         let bytes: &[u8] = bytemuck::bytes_of(command);
         let frame = encode_frame(&bytes);
         let _ = self.port.write_all(&frame);
     }
 
-    pub fn poll<T: Default + Copy>(&mut self) -> Option<T> {
+    pub fn read_telemetry(&mut self) -> Option<D::Telemetry> {
         let mut buffer: [u8; 64] = [0; 64];
         let Ok(bytes_read) = self.port.read(&mut buffer) else {
             return None;
@@ -41,22 +50,13 @@ impl PiPico {
 
         let mut reader = SlipReader::new(Cursor::new(&buffer[..bytes_read]));
 
-        let mut final_state = T::default();
-        let mut found: bool = false;
+        /* Read frames out, keeping the last one of the correct size */
+        let mut latest = None;
         while let Ok(Some(frame)) = reader.read_frame() {
-            /* Read frames out until we get the correct size,  */
-            if frame.len() == (size_of::<T>()) {
-                found = true;
-                /* Rust let me be free jesus christ */
-                unsafe {
-                    final_state = *(frame.as_ptr() as *const T);
-                }
+            if let Ok(state) = bytemuck::try_pod_read_unaligned::<D::Telemetry>(&frame) {
+                latest = Some(state);
             }
         }
-
-        if !found {
-            return None;
-        }
-        return Some(final_state);
+        return latest;
     }
 }

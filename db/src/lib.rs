@@ -36,6 +36,8 @@ impl ToSql for Data {
     }
 }
 
+// FIXME: rework this all to more columnar data
+
 /// One key/value pair
 pub struct Measurement {
     pub key: String,
