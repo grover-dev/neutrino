@@ -15,7 +15,7 @@ INA226 INA(0x40);
 void setup() {
   // This is running over the virtual port, baud rate is meaningless
   Serial.begin(115200);
-   while (!Serial) {
+  while (!Serial) {
     ; // Do nothing and wait
   }
   Serial.println("Starting...");
@@ -40,8 +40,9 @@ void setup() {
 void loop() {
   /* Update state from commands */
   // packetSerial.update();
-char buffer[50]; // Make sure the buffer is large enough for the entire string!
-sprintf(buffer, "got measurement: %d mV", INA.getBusVoltage_mV());
+  char
+      buffer[50]; // Make sure the buffer is large enough for the entire string!
+  sprintf(buffer, "got measurement: %d mV", INA.getBusVoltage_mV());
   Serial.println(buffer);
 
   // FIXME: bring in INA telemetry later!
@@ -52,8 +53,8 @@ sprintf(buffer, "got measurement: %d mV", INA.getBusVoltage_mV());
   // TODO: measure ina's and shit
   // packetSerial.send((uint8_t *)&state, sizeof(state_t));
 
-  /* Update at 10 Hz */
-  delay(100);
+  /* Update at 20 Hz */
+  delay(50);
 }
 
 void onPacketReceived(const uint8_t *buffer, size_t size) {

@@ -66,12 +66,9 @@ void startCalibration(void) {
 }
 
 // Persist the calibration data (DCD) to the BNO08x flash
-void flashCalibration(void) {
-  sh2_saveDcdNow();
-}
+void flashCalibration(void) { sh2_saveDcdNow(); }
 
 void loop() {
-  delay(10);
 
   /* Update command */
   packetSerial.update();
@@ -109,11 +106,13 @@ void loop() {
     telemetry.calibration_state = sensorValue.status & 0x03;
   }
 
-  /* Send at a fixed rate rather than per event so the host isn't flooded */
-  if (millis() - last_send_time_ms >= send_period_ms) {
-    last_send_time_ms = millis();
-    packetSerial.send((uint8_t *)&telemetry, sizeof(digital_compass_telemetry_t));
-  }
+  // not quite a periodic loop but meh
+  packetSerial.send((uint8_t *)&telemetry, sizeof(digital_compass_telemetry_t));
+  delay(50);
+  // /* Send at a fixed rate rather than per event so the host isn't flooded */
+  // if (millis() - last_send_time_ms >= send_period_ms) {
+  //   last_send_time_ms = millis();
+  // }
 }
 
 void onPacketReceived(const uint8_t *buffer, size_t size) {

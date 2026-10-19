@@ -15,7 +15,7 @@ use std::net::UdpSocket;
 /// (charge MOSFET) and bit 3 (discharge MOSFET) are known.
 ///
 /// See BMS_README.md for the register map.
-#[derive(Deserialize, Serialize, Default, Debug, Clone)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone, Copy)]
 pub struct DynessBmsData {
     pub seq: u64,
     pub ts: String,

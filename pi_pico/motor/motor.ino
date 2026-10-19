@@ -103,8 +103,8 @@ void loop() {
   // TODO: measure ina's and shit
   packetSerial.send((uint8_t *)&state, sizeof(state_t));
 
-  /* Update at 10 Hz */
-  delay(100);
+  /* Update at 20 Hz */
+  delay(50);
 }
 
 void onPacketReceived(const uint8_t *buffer, size_t size) {
