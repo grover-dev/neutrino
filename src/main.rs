@@ -73,6 +73,10 @@ fn main() {
         // TODO: add command server or something?
         // TODO: Add some keep alive flag sent by a server -> if the keep alive dies we shut off the motors
 
+        // FIXME: add a helper function to check a json + extract these fields from it...
+        // cmd.apply(h, hash_str("duty_cycle:f32"), 0.75f32.to_bits() as u64)
+        //     .unwrap();
+
         // read_datashare()
         // TODO: Future thing for more complex systems, probabl ynot necessayr here
 
