@@ -1,3 +1,5 @@
+/// and on the seventh day, claude said let their be a free code generator
+
 // FNV-1a: a tiny, well-known hash. Easy to reproduce in Python or C.
 pub const fn hash_str(s: &str) -> u32 {
     let bytes = s.as_bytes();
@@ -55,9 +57,21 @@ pub trait FromRaw64: Sized {
     fn from_raw(raw: u64) -> Option<Self>;
 }
 
-impl FromRaw64 for f32 { fn from_raw(raw: u64) -> Option<Self> { Some(f32::from_bits(raw as u32)) } }
-impl FromRaw64 for f64 { fn from_raw(raw: u64) -> Option<Self> { Some(f64::from_bits(raw)) } }
-impl FromRaw64 for bool { fn from_raw(raw: u64) -> Option<Self> { Some(raw != 0) } }
+impl FromRaw64 for f32 {
+    fn from_raw(raw: u64) -> Option<Self> {
+        Some(f32::from_bits(raw as u32))
+    }
+}
+impl FromRaw64 for f64 {
+    fn from_raw(raw: u64) -> Option<Self> {
+        Some(f64::from_bits(raw))
+    }
+}
+impl FromRaw64 for bool {
+    fn from_raw(raw: u64) -> Option<Self> {
+        Some(raw != 0)
+    }
+}
 
 macro_rules! unsigned { ($($t:ty),*) => { $(impl FromRaw64 for $t {
     fn from_raw(raw: u64) -> Option<Self> { <$t>::try_from(raw).ok() }
@@ -136,7 +150,8 @@ mod tests {
         let mut cmd = TestCommand::default();
         let h = TestCommand::HASH;
 
-        cmd.apply(h, hash_str("duty_cycle:f32"), 0.75f32.to_bits() as u64).unwrap();
+        cmd.apply(h, hash_str("duty_cycle:f32"), 0.75f32.to_bits() as u64)
+            .unwrap();
         cmd.apply(h, hash_str("enable:u32"), 1).unwrap();
         cmd.apply(h, hash_str("offset:i16"), -5i64 as u64).unwrap();
 
@@ -150,13 +165,26 @@ mod tests {
         let mut cmd = TestCommand::default();
         let h = TestCommand::HASH;
 
-        assert_eq!(cmd.apply(h ^ 1, hash_str("enable:u32"), 1), Err(SetError::StructMismatch));
-        assert_eq!(cmd.apply(h, hash_str("enable:u8"), 1), Err(SetError::UnknownField));
-        assert_eq!(cmd.apply(h, hash_str("enable:u32"), u64::MAX), Err(SetError::OutOfRange));
+        assert_eq!(
+            cmd.apply(h ^ 1, hash_str("enable:u32"), 1),
+            Err(SetError::StructMismatch)
+        );
+        assert_eq!(
+            cmd.apply(h, hash_str("enable:u8"), 1),
+            Err(SetError::UnknownField)
+        );
+        assert_eq!(
+            cmd.apply(h, hash_str("enable:u32"), u64::MAX),
+            Err(SetError::OutOfRange)
+        );
     }
 
     #[test]
     fn registers_with_inventory() {
-        assert!(inventory::iter::<SchemaEntry>.into_iter().any(|s| s.name == "TestCommand"));
+        assert!(
+            inventory::iter::<SchemaEntry>
+                .into_iter()
+                .any(|s| s.name == "TestCommand")
+        );
     }
 }
