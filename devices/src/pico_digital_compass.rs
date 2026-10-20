@@ -33,11 +33,13 @@ pub struct DigitalCompassTelemetry {
     flash_calibration: u32,
 }
 
+schema::schema_struct! {
 #[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Serialize)]
 #[repr(C, packed)] // Ensures a stable memory layout
 pub struct DigitalCompassCommand {
     start_calibration: u32,
     flash_calibration: u32,
+}
 }
 
 pub struct DigitalCompass;
