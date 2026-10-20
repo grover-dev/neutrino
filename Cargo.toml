@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = [".", "db", "devices", "server"]
+members = [".", "db", "devices", "server", "schema"]
 
 [dependencies]
 db = { path = "db" }
@@ -18,6 +18,10 @@ nmea0183 = "0.6.0"
 chrono = "0.4.45"
 bytemuck = {version = "1.25.2", features = ["derive"]}
 derive_more = {version = "2.1.1", features = ["full"]}
+
+[build-dependencies]
+devices = { path = "devices" }
+schema = { path = "schema" }
 
 [profile.release]
 opt-level = 3      # Optimize for size (use "s" or "z")

@@ -43,6 +43,10 @@ struct Blackboard {
     bms_telem: DynessBmsData,
 }
 
+// How to make a trait that exposes a hash assignment + type extraction for each member?
+// - probably doable? is it easier to just code gen it? tbd...
+// - commands are packaged as json, field + value
+
 fn main() {
     let mut gps = gps::Gps::new("/dev/ttyUSB0");
     // FIXME: how to hard wire these? tbd...
@@ -68,6 +72,9 @@ fn main() {
         // read_commands()
         // TODO: add command server or something?
         // TODO: Add some keep alive flag sent by a server -> if the keep alive dies we shut off the motors
+
+        // read_datashare()
+        // TODO: Future thing for more complex systems, probabl ynot necessayr here
 
         // read()
         let gps_data = gps.update();

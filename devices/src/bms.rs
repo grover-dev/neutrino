@@ -18,8 +18,7 @@ use std::net::UdpSocket;
 #[derive(Deserialize, Serialize, Default, Debug, Clone, Copy)]
 pub struct DynessBmsData {
     pub seq: u64,
-    pub ts: String,
-
+    // pub ts: String,
     pub voltage_v: f64,
     pub current_a: f64,
     pub power_w: f64,
