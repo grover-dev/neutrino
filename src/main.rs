@@ -7,14 +7,14 @@ use devices::gps::GpsData;
 use devices::pico_digital_compass::{DigitalCompassCommand, DigitalCompassTelemetry};
 use devices::pico_motor_control::{self, MotorControllerCommand, MotorControllerState};
 use devices::vehicle_watchdog::{VehicleWatchdog, VehicleWatchdogTelem};
-use devices::{bms, gps, pi_pico, pico_digital_compass};
-use gps::GpsError;
+use devices::{bms, gps, pico_digital_compass};
 
-use chrono::{DateTime, Utc};
-use db::{Database, Measurement, Record};
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 use std::{net::UdpSocket, thread, time::Duration};
+
+use std::time::Instant;
+
+const WATCHDOG_TIMEOUT_SECS: u64 = 10;
 
 // FIXME: split this off into a separate file eventually
 // i want to create a trait that will append a timestamp field + add a to json method for any given struct?
@@ -77,6 +77,9 @@ use std::net::SocketAddr;
 // Create a fallback IP address (e.g., 0.0.0.0:0) outside or inside the loop
 
 fn main() {
+    // app monotonic time!
+    let now = Instant::now();
+
     let mut gps = gps::Gps::new("/dev/ttyUSB0");
     // FIXME: how to hard wire these? tbd...
     let mut digital_compass = pico_digital_compass::PicoDigitalCompass::new("/dev/ttyACM0");
@@ -106,6 +109,8 @@ fn main() {
     response_socket
         .connect("127.0.0.1:34256")
         .expect("socket failed to connect");
+
+    let mut is_first_run = 1;
 
     let mut blackboard = Blackboard::default();
     let mut buf = [0u8; 65536];
@@ -209,18 +214,24 @@ fn main() {
 
         // send_telem()
         if blackboard.vehicle_watchdog.keep_alive > 0 {
-            let current_time_secs = Utc::now().timestamp();
-            blackboard.vehicle_watchdog_telem.seconds_to_expiry = 10;
+            let current_time_secs = now.elapsed().as_secs();
+            blackboard.vehicle_watchdog_telem.seconds_to_expiry = WATCHDOG_TIMEOUT_SECS;
             blackboard.vehicle_watchdog_telem.seconds_last_pet_time = current_time_secs;
             blackboard.vehicle_watchdog_telem.watchdog_lockout_active = 0;
         } else {
-            let current_time_secs = Utc::now().timestamp();
-            blackboard.vehicle_watchdog_telem.seconds_to_expiry =
-                current_time_secs - blackboard.vehicle_watchdog_telem.seconds_last_pet_time;
+            let current_time_secs = now.elapsed().as_secs();
+            let delta = current_time_secs - blackboard.vehicle_watchdog_telem.seconds_last_pet_time;
+
+            if delta > WATCHDOG_TIMEOUT_SECS {
+                blackboard.vehicle_watchdog_telem.seconds_to_expiry = 0;
+            } else {
+                blackboard.vehicle_watchdog_telem.seconds_to_expiry = WATCHDOG_TIMEOUT_SECS - delta;
+            }
         }
 
-        if blackboard.vehicle_watchdog_telem.seconds_to_expiry < 0 {
+        if blackboard.vehicle_watchdog_telem.seconds_to_expiry == 0 || is_first_run > 0 {
             blackboard.vehicle_watchdog_telem.watchdog_lockout_active = 1;
+            is_first_run = 0;
         }
 
         blackboard.vehicle_watchdog.keep_alive = 0;

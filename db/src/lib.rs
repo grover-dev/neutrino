@@ -9,7 +9,6 @@
  * - vector of "key" : "values"
  *   - values are all strings? easy for now...
  */
-use chrono::{DateTime, Utc};
 use rusqlite::{Connection, ToSql, params, types::ToSqlOutput};
 use serde::Serialize;
 use serde_json::Value;
