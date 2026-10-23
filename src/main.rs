@@ -9,7 +9,8 @@ use devices::pico_motor_control::{self, MotorControllerCommand, MotorControllerS
 use devices::vehicle_watchdog::{VehicleWatchdog, VehicleWatchdogTelem};
 use devices::{bms, gps, pico_digital_compass};
 
-use serde::{Deserialize, Serialize};
+use commands::{CommandRequest, CommandResponse, Resp};
+use serde::Serialize;
 use std::{net::UdpSocket, thread, time::Duration};
 
 use std::time::Instant;
@@ -44,27 +45,6 @@ struct Blackboard {
     bms_telem: DynessBmsData,
     vehicle_watchdog: VehicleWatchdog,
     vehicle_watchdog_telem: VehicleWatchdogTelem,
-}
-
-#[derive(Default, Debug, Copy, Clone, Serialize, Deserialize)]
-struct CommandRequest {
-    command_id: u16,
-    struct_hash: u32,
-    field_hash: u32,
-    value: u64,
-}
-
-#[derive(Default, Debug, Copy, Clone, Serialize)]
-enum Resp {
-    #[default]
-    Failure,
-    Success,
-}
-
-#[derive(Default, Debug, Copy, Clone, Serialize)]
-struct CommandResponse {
-    command_id: u16,
-    response: Resp,
 }
 
 use schema::Schema;

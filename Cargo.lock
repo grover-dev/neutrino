@@ -118,6 +118,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "commands"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -492,6 +499,7 @@ dependencies = [
  "bluer",
  "bytemuck",
  "chrono",
+ "commands",
  "db",
  "derive_more",
  "devices",
