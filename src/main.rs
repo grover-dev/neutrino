@@ -11,7 +11,7 @@ use gps::GpsError;
 
 use chrono::{DateTime, Utc};
 use db::{Database, Measurement, Record};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::{net::UdpSocket, thread, time::Duration};
 
@@ -43,9 +43,35 @@ struct Blackboard {
     bms_telem: DynessBmsData,
 }
 
+#[derive(Default, Debug, Copy, Clone, Serialize, Deserialize)]
+struct CommandRequest {
+    command_id: u16,
+    struct_hash: u32,
+    field_hash: u32,
+    value: u64,
+}
+
+#[derive(Default, Debug, Copy, Clone, Serialize)]
+enum Resp {
+    #[default]
+    Failure,
+    Success,
+}
+
+#[derive(Default, Debug, Copy, Clone, Serialize)]
+struct CommandResponse {
+    command_id: u16,
+    response: Resp,
+}
+
+use schema::Schema;
+use std::net::Ipv4Addr;
+use std::net::SocketAddr;
 // How to make a trait that exposes a hash assignment + type extraction for each member?
 // - probably doable? is it easier to just code gen it? tbd...
 // - commands are packaged as json, field + value
+
+// Create a fallback IP address (e.g., 0.0.0.0:0) outside or inside the loop
 
 fn main() {
     let mut gps = gps::Gps::new("/dev/ttyUSB0");
@@ -55,27 +81,83 @@ fn main() {
 
     let mut bms: bms::DynessBms = bms::DynessBms::new("127.0.0.1:9000");
     // TODO:
-    // - MPPT
-    // - Starlink
-    // - jetson data (cpu, temp, etc...)
-    // - Power pico
-    // - Camera data
+    // - MPPT // Defer
+    // - Starlink // Maybe defer? tbd...
+    // - jetson data (cpu, temp, etc...) // Defer
+    // - Power pico // Probably required
+    // - Camera data // required
 
-    // FIXME: double check these...
-    let socket = UdpSocket::bind("127.0.0.1:34254").expect("socket failed to bind");
-    socket
+    // FIXME: Add some config or something for socket coordination...
+    let telem_socket = UdpSocket::bind("127.0.0.1:34254").expect("socket failed to bind");
+    telem_socket
         .connect("127.0.0.1:34254")
         .expect("socket failed to connect");
 
+    let fallback_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0);
+    let command_socket = UdpSocket::bind("0.0.0.0:34255").expect("socket failed to bind");
+    command_socket
+        .set_nonblocking(true)
+        .expect("failed to mark socket as non blocking");
+
+    let response_socket = UdpSocket::bind("127.0.0.1:34256").expect("socket failed to bind");
+    response_socket
+        .connect("127.0.0.1:34256")
+        .expect("socket failed to connect");
+
     let mut blackboard = Blackboard::default();
+    let mut buf = [0u8; 65536];
     loop {
-        // read_commands()
+        // Limit to 10 messages per cycle max
+        for i in 0..10 {
+            let (number_of_bytes, src_addr) = command_socket
+                .recv_from(&mut buf)
+                .unwrap_or((0, fallback_addr));
+
+            if number_of_bytes == 0 {
+                // No more messages
+                break;
+            }
+            let mut_slice: &mut [u8] = &mut buf[0..number_of_bytes];
+
+            let Ok(command): Result<CommandRequest, _> = serde_json::from_slice(mut_slice) else {
+                // Failed to deserialize this message, skip and move on
+                println!("Failed to deserialize the buffer into a CommandRequest, skipping");
+                continue;
+            };
+
+            // Now match on the struct type...
+            // This should eventually become a map look up but i cant be bothered rn...
+
+            let result = match command.struct_hash {
+                MotorControllerCommand::HASH => blackboard
+                    .motor_command
+                    .set_field(command.field_hash, command.value),
+                DigitalCompassCommand::HASH => blackboard
+                    .digital_compass_command
+                    .set_field(command.field_hash, command.value),
+                _ => Err(schema::SetError::StructMismatch),
+            };
+
+            let response = CommandResponse {
+                command_id: command.command_id,
+                response: if result.is_ok() {
+                    Resp::Success
+                } else {
+                    Resp::Failure
+                },
+            };
+
+            match serde_json::to_string(&response) {
+                Ok(json_string) => {
+                    let bytes: &[u8] = json_string.as_bytes();
+                    let _ = response_socket.send(bytes);
+                }
+                Err(e) => eprintln!("Serialization failed: {}", e),
+            }
+        }
+
         // TODO: add command server or something?
         // TODO: Add some keep alive flag sent by a server -> if the keep alive dies we shut off the motors
-
-        // FIXME: add a helper function to check a json + extract these fields from it...
-        // cmd.apply(h, hash_str("duty_cycle:f32"), 0.75f32.to_bits() as u64)
-        //     .unwrap();
 
         // read_datashare()
         // TODO: Future thing for more complex systems, probabl ynot necessayr here
@@ -112,7 +194,7 @@ fn main() {
 
         // send_telem()
 
-        send_telem(blackboard, &socket);
+        send_telem(blackboard, &telem_socket);
 
         // FIXME: Not quite right butgood nuff for now
         thread::sleep(Duration::from_millis(100));

@@ -9,6 +9,7 @@ members = [".", "db", "devices", "server", "schema"]
 [dependencies]
 db = { path = "db" }
 devices = { path = "devices" }
+schema = { path = "schema" }
 bluer = "0.17.4"
 serialport = "4.10.1"
 serde = { version = "1", features = ["derive"] }
