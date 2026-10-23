@@ -180,6 +180,7 @@ name = "devices"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "chrono",
  "nmea0183",
  "schema",
  "serde",

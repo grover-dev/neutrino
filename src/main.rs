@@ -6,6 +6,7 @@ use bms::DynessBmsData;
 use devices::gps::GpsData;
 use devices::pico_digital_compass::{DigitalCompassCommand, DigitalCompassTelemetry};
 use devices::pico_motor_control::{self, MotorControllerCommand, MotorControllerState};
+use devices::vehicle_watchdog::{VehicleWatchdog, VehicleWatchdogTelem};
 use devices::{bms, gps, pi_pico, pico_digital_compass};
 use gps::GpsError;
 
@@ -41,6 +42,8 @@ struct Blackboard {
     digital_compass_command: DigitalCompassCommand,
     gps_telem: GpsData,
     bms_telem: DynessBmsData,
+    vehicle_watchdog: VehicleWatchdog,
+    vehicle_watchdog_telem: VehicleWatchdogTelem,
 }
 
 #[derive(Default, Debug, Copy, Clone, Serialize, Deserialize)]
@@ -108,8 +111,8 @@ fn main() {
     let mut buf = [0u8; 65536];
     loop {
         // Limit to 10 messages per cycle max
-        for i in 0..10 {
-            let (number_of_bytes, src_addr) = command_socket
+        for _ in 0..10 {
+            let (number_of_bytes, _) = command_socket
                 .recv_from(&mut buf)
                 .unwrap_or((0, fallback_addr));
 
@@ -134,6 +137,9 @@ fn main() {
                     .set_field(command.field_hash, command.value),
                 DigitalCompassCommand::HASH => blackboard
                     .digital_compass_command
+                    .set_field(command.field_hash, command.value),
+                VehicleWatchdog::HASH => blackboard
+                    .vehicle_watchdog
                     .set_field(command.field_hash, command.value),
                 _ => Err(schema::SetError::StructMismatch),
             };
@@ -189,10 +195,35 @@ fn main() {
         // TODO: RUN MATH HERE!
 
         // write()
+        // If the timeout expires, force the motors off
+        if blackboard.vehicle_watchdog_telem.watchdog_lockout_active > 0 {
+            blackboard.motor_command = MotorControllerCommand {
+                motor_a_duty_cycle: 0.0,
+                motor_b_duty_cycle: 0.0,
+                enable_motors_bool: 0,
+            }
+        }
+
         digital_compass.send_command(&blackboard.digital_compass_command);
         motor.send_command(&blackboard.motor_command);
 
         // send_telem()
+        if blackboard.vehicle_watchdog.keep_alive > 0 {
+            let current_time_secs = Utc::now().timestamp();
+            blackboard.vehicle_watchdog_telem.seconds_to_expiry = 10;
+            blackboard.vehicle_watchdog_telem.seconds_last_pet_time = current_time_secs;
+            blackboard.vehicle_watchdog_telem.watchdog_lockout_active = 0;
+        } else {
+            let current_time_secs = Utc::now().timestamp();
+            blackboard.vehicle_watchdog_telem.seconds_to_expiry =
+                current_time_secs - blackboard.vehicle_watchdog_telem.seconds_last_pet_time;
+        }
+
+        if blackboard.vehicle_watchdog_telem.seconds_to_expiry < 0 {
+            blackboard.vehicle_watchdog_telem.watchdog_lockout_active = 1;
+        }
+
+        blackboard.vehicle_watchdog.keep_alive = 0;
 
         send_telem(blackboard, &telem_socket);
 

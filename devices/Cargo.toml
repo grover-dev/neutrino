@@ -11,3 +11,4 @@ slipspeed = "2.0.0"
 nmea0183 = "0.6.0"
 bytemuck = { version = "1.25.2", features = ["derive"] }
 schema = { path = "../schema" }
+chrono = "0.4.45"
