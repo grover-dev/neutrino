@@ -60,10 +60,11 @@ fn main() {
     // app monotonic time!
     let now = Instant::now();
 
-    let mut gps = gps::Gps::new("/dev/ttyUSB0");
+    let mut gps = gps::Gps::new("/dev/gps");
     // FIXME: how to hard wire these? tbd...
-    let mut digital_compass = pico_digital_compass::PicoDigitalCompass::new("/dev/ttyACM0");
-    let mut motor = pico_motor_control::PicoMotorController::new("/dev/ttyACM1");
+    let mut digital_compass =
+        pico_digital_compass::PicoDigitalCompass::new("/dev/pico_digital_compass");
+    let mut motor = pico_motor_control::PicoMotorController::new("/dev/pico_motor_control");
 
     let mut bms: bms::DynessBms = bms::DynessBms::new("127.0.0.1:9000");
     // TODO:
