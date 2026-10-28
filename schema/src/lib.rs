@@ -156,13 +156,14 @@ pub fn write_yaml_dir(dir: &Path) -> io::Result<()> {
         written.insert(path);
     }
 
+    // Nice to have but causes conflicts with cross crate builds...
     // Remove YAML left behind by structs that were renamed or deleted
-    for entry in fs::read_dir(&out_dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.extension().is_some_and(|e| e == "yaml") && !written.contains(&path) {
-            fs::remove_file(&path).unwrap();
-        }
-    }
+    // for entry in fs::read_dir(&out_dir).unwrap() {
+    //     let path = entry.unwrap().path();
+    //     if path.extension().is_some_and(|e| e == "yaml") && !written.contains(&path) {
+    //         fs::remove_file(&path).unwrap();
+    //     }
+    // }
     return Ok(());
 }
 
@@ -170,8 +171,10 @@ pub fn generate() {
     // Rerun when this file changes; cargo also reruns it whenever a build-dependency changes
     println!("cargo:rerun-if-changed=build.rs");
 
-    let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    write_yaml_dir(&dir).expect("failed to write schema yaml");
+    let root = PathBuf::from(
+        env::var("WORKSPACE_DIR").expect("WORKSPACE_DIR not set, see .cargo/config.yaml"),
+    );
+    write_yaml_dir(&root).expect("failed to write schema yaml");
 }
 
 #[macro_export]
