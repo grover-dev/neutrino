@@ -132,6 +132,59 @@ macro_rules! schema_struct {
     };
 }
 
+use std::{
+    collections::HashSet,
+    env, fs, io,
+    path::{Path, PathBuf},
+};
+
+pub fn write_yaml_dir(dir: &Path) -> io::Result<()> {
+    let out_dir = PathBuf::from(dir).join("generated/schema");
+    fs::create_dir_all(&out_dir).unwrap();
+
+    let mut written = HashSet::new();
+    for s in inventory::iter::<SchemaEntry> {
+        let mut yaml = format!("name: {}\nhash: {:#010x}\nfields:\n", s.name, s.hash);
+        for f in s.fields {
+            yaml.push_str(&format!(
+                "  - {{ name: {}, type: {}, hash: {:#010x} }}\n",
+                f.name, f.ty, f.hash
+            ));
+        }
+        let path = out_dir.join(format!("{}.yaml", s.name));
+        fs::write(&path, yaml).unwrap();
+        written.insert(path);
+    }
+
+    // Remove YAML left behind by structs that were renamed or deleted
+    for entry in fs::read_dir(&out_dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "yaml") && !written.contains(&path) {
+            fs::remove_file(&path).unwrap();
+        }
+    }
+    return Ok(());
+}
+
+pub fn generate() {
+    // Rerun when this file changes; cargo also reruns it whenever a build-dependency changes
+    println!("cargo:rerun-if-changed=build.rs");
+
+    let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    write_yaml_dir(&dir).expect("failed to write schema yaml");
+}
+
+#[macro_export]
+macro_rules! build_script
+{
+    ($($krate:ident),* $(,)?)=>
+    {
+        // Inject the crate
+        $( use $krate as _ ;)*
+        fn main() {$crate::generate();}
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
