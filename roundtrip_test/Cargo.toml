@@ -1,0 +1,11 @@
+[package]
+name = "roundtrip_test"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+schema = { version = "0.1.0", path = "../schema" }
+
+[build-dependencies]
+schema = { path = "../schema" }
+devices = { path = "../devices" }

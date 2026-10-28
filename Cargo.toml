@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = [".", "db", "devices", "server", "schema", "commands"]
+members = [".", "db", "devices", "server", "schema", "commands", "roundtrip_test"]
 
 [dependencies]
 db = { path = "db" }
