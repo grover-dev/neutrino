@@ -1,0 +1,7 @@
+[package]
+name = "pwm_control"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+devices = { version = "0.1.0", path = "../devices" }

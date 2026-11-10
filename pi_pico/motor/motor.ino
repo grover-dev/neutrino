@@ -21,8 +21,8 @@ Servo motor_b_controller;
 // FIXME: check the addr
 // INA226 INA(0x40);
 
-constexpr int motor_a_pwm_pin = 15;
-constexpr int motor_b_pwm_pin = 16;
+constexpr int motor_a_pwm_pin = 20;
+constexpr int motor_b_pwm_pin = 21;
 
 void setup() {
   pinMode(motor_a_pwm_pin, OUTPUT);
