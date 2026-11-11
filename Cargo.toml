@@ -1,33 +1,61 @@
 [package]
+edition = "2024"
 name = "neutrino"
 version = "0.1.0"
-edition = "2024"
-
-[workspace]
-members = [".", "db", "devices", "server", "schema", "commands", "roundtrip_test", "pwm_control"]
 
 [dependencies]
-db = { path = "db" }
-devices = { path = "devices" }
-schema = { path = "schema" }
 bluer = "0.17.4"
-serialport = "4.10.1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-slipspeed = "2.0.0"
-nmea0183 = "0.6.0"
 chrono = "0.4.45"
-bytemuck = {version = "1.25.2", features = ["derive"]}
-derive_more = {version = "2.1.1", features = ["full"]}
-commands = { version = "0.1.0", path = "commands" }
+nmea0183 = "0.6.0"
+serde_json = "1"
+serialport = "4.10.1"
+slipspeed = "2.0.0"
 
-[build-dependencies]
-devices = { path = "devices" }
-schema = { path = "schema" }
+[dependencies.bytemuck]
+version = "1.25.2"
+features = ["derive"]
+
+[dependencies.commands]
+version = "0.1.0"
+path = "commands"
+
+[dependencies.db]
+path = "db"
+
+[dependencies.derive_more]
+version = "2.1.1"
+features = ["full"]
+
+[dependencies.devices]
+path = "devices"
+
+[dependencies.schema]
+path = "schema"
+
+[dependencies.serde]
+version = "1"
+features = ["derive"]
+
+[build-dependencies.devices]
+path = "devices"
+
+[build-dependencies.schema]
+path = "schema"
+
+[workspace]
+members = [
+    ".",
+    "db",
+    "devices",
+    "server",
+    "schema",
+    "commands",
+    "roundtrip_test",
+    "pwm_control",
+]
 
 [profile.release]
-opt-level = 3      # Optimize for size (use "s" or "z")
-strip = true         # Automatically strip symbols from the binary
-lto = true           # Enable Link-Time Optimization (removes unused code)
-codegen-units = 1    # Reduce parallel code generation blocks for better size optimization
-#panic = "abort"      # Remove panic unwinding machinery (app crashes immediately on panic)
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

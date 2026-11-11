@@ -64,6 +64,7 @@ fn main() {
     // FIXME: how to hard wire these? tbd...
     let mut digital_compass =
         pico_digital_compass::PicoDigitalCompass::new("/dev/pico_digital_compass");
+    // FIXME: update udev rules for the new motor controller
     let mut motor = pico_motor_control::PicoMotorController::new("/dev/pico_motor_control");
 
     let mut bms: bms::DynessBms = bms::DynessBms::new("127.0.0.1:9000");
@@ -71,8 +72,8 @@ fn main() {
     // - MPPT // Defer
     // - Starlink // Maybe defer? tbd...
     // - jetson data (cpu, temp, etc...) // Defer
-    // - Power pico // Probably required
-    // - Camera data // required
+    // - Power pico // defer
+    // - Camera data // defer
 
     // FIXME: Add some config or something for socket coordination...
     let telem_socket = UdpSocket::bind("127.0.0.1:34254").expect("socket failed to bind");
