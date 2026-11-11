@@ -15,7 +15,7 @@ use std::{net::UdpSocket, thread, time::Duration};
 
 use std::time::Instant;
 
-const WATCHDOG_TIMEOUT_SECS: u64 = 10;
+const WATCHDOG_TIMEOUT_SECS: u64 = 1;
 
 // FIXME: split this off into a separate file eventually
 // i want to create a trait that will append a timestamp field + add a to json method for any given struct?
@@ -180,8 +180,6 @@ fn main() {
         if let Some(data) = bms_data {
             blackboard.bms_telem = data;
         }
-
-        println!("here!");
 
         // step()
         // TODO: RUN MATH HERE!

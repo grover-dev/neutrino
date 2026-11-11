@@ -13,14 +13,12 @@ schema::schema_struct! {
     }
 }
 
-schema::schema_struct! {
 #[derive(Default, Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, Serialize)]
 #[repr(C)] // Ensures a stable memory layout
 pub struct MotorControllerState {
     commanded_motor_a_duty_cycle: f32,
     commanded_motor_b_duty_cycle: f32,
     commanded_enable_motors_bool: u32,
-}
 }
 
 pub struct MotorController;

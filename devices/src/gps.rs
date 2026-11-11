@@ -12,7 +12,6 @@ pub struct Gps {
     parser: Parser,
 }
 
-schema::schema_struct! {
 #[derive(Default, Debug, Copy, Clone, Serialize)]
 pub struct GpsData {
     latitude: f64,
@@ -26,7 +25,6 @@ pub struct GpsData {
     //       - gps tells us the course
     magnetic_correction: f32,
     magnetic_correction_is_valid: bool,
-}
 }
 
 impl Gps {
