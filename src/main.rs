@@ -4,7 +4,7 @@
 // #![no_std]
 use bms::DynessBmsData;
 use devices::gps::GpsData;
-use devices::pico_digital_compass::{DigitalCompassCommand, DigitalCompassTelemetry};
+// use devices::pico_digital_compass::{DigitalCompassCommand, DigitalCompassTelemetry};
 use devices::pico_motor_control::{self, MotorControllerCommand, MotorControllerState};
 use devices::vehicle_watchdog::{VehicleWatchdog, VehicleWatchdogTelem};
 use devices::{bms, gps, pico_digital_compass};
@@ -39,8 +39,8 @@ fn send_telem<T: Serialize>(data: T, socket: &UdpSocket) {
 struct Blackboard {
     motor_telem: MotorControllerState,
     motor_command: MotorControllerCommand,
-    digital_compass_telem: DigitalCompassTelemetry,
-    digital_compass_command: DigitalCompassCommand,
+    // digital_compass_telem: DigitalCompassTelemetry,
+    // digital_compass_command: DigitalCompassCommand,
     gps_telem: GpsData,
     bms_telem: DynessBmsData,
     vehicle_watchdog: VehicleWatchdog,
@@ -60,10 +60,11 @@ fn main() {
     // app monotonic time!
     let now = Instant::now();
 
+    // Lol... need to add a dev rule
     let mut gps = gps::Gps::new("/dev/gps");
     // FIXME: how to hard wire these? tbd...
-    let mut digital_compass =
-        pico_digital_compass::PicoDigitalCompass::new("/dev/pico_digital_compass");
+    // let mut digital_compass =
+    //     pico_digital_compass::PicoDigitalCompass::new("/dev/pico_digital_compass");
     // FIXME: update udev rules for the new motor controller
     let mut motor = pico_motor_control::PicoMotorController::new("/dev/pico_motor_control");
 
@@ -122,9 +123,9 @@ fn main() {
                 MotorControllerCommand::HASH => blackboard
                     .motor_command
                     .set_field(command.field_hash, command.value),
-                DigitalCompassCommand::HASH => blackboard
-                    .digital_compass_command
-                    .set_field(command.field_hash, command.value),
+                // DigitalCompassCommand::HASH => blackboard
+                //     .digital_compass_command
+                //     .set_field(command.field_hash, command.value),
                 VehicleWatchdog::HASH => blackboard
                     .vehicle_watchdog
                     .set_field(command.field_hash, command.value),
@@ -157,7 +158,7 @@ fn main() {
 
         // read()
         let gps_data = gps.update();
-        let compass_data = digital_compass.read_telemetry();
+        // let compass_data = digital_compass.read_telemetry();
         let motor_data = motor.read_telemetry();
 
         let bms_data = bms.poll();
@@ -166,9 +167,9 @@ fn main() {
             blackboard.gps_telem = data;
         }
 
-        if let Some(data) = compass_data {
-            blackboard.digital_compass_telem = data;
-        }
+        // if let Some(data) = compass_data {
+        //     blackboard.digital_compass_telem = data;
+        // }
 
         if let Some(data) = motor_data {
             blackboard.motor_telem = data;
@@ -191,7 +192,7 @@ fn main() {
             }
         }
 
-        digital_compass.send_command(&blackboard.digital_compass_command);
+        // digital_compass.send_command(&blackboard.digital_compass_command);
         motor.send_command(&blackboard.motor_command);
 
         // send_telem()
