@@ -10,10 +10,12 @@ JSON CommandRequest datagram sent to the vehicle's command socket:
     {"command_id": u16, "struct_hash": u32, "field_hash": u32, "value": u64}
 f32 values are sent as their IEEE-754 bit pattern (main.rs: f32::from_bits).
 
-Controls (hold to drive; release ramps back to 0):
+Controls (hold to drive; release ramps back to the latched values, else 0):
     w  both motors  -> +max        s  both motors -> -max
     a  motor A      -> +max        d  motor B     -> +max
-    space  stop now (duty 0)       q  quit (duty 0, motors disabled)
+    l  latch current A/B duty      c  clear latch (ramps back to 0)
+    space  stop now (duty 0, clears latch)
+    q  quit (duty 0, motors disabled)
 
 A terminal only reports key presses (via autorepeat), not releases, so a key
 counts as held until --hold-timeout passes without another repeat.
@@ -163,12 +165,13 @@ def main():
     step = args.ramp / RATE_HZ
     duty_a = duty_b = 0.0
     held, held_at = None, 0.0
+    latched = None  # (a, b) to rest at when no key is held
 
     fd = sys.stdin.fileno()
     old_tty = termios.tcgetattr(fd)
     tty.setcbreak(fd)  # keeps Ctrl-C working
     print(f"driving {args.host}:{args.port}  max={m}  ramp={args.ramp}/s  "
-          "[wasd] drive  [space] stop  [q] quit")
+          "[wasd] drive  [l] latch  [c] clear  [space] stop  [q] quit")
     try:
         period = 1.0 / RATE_HZ
         next_t = time.monotonic()
@@ -182,14 +185,18 @@ def main():
                 if key == "q":
                     return
                 if key == " ":
-                    held, duty_a, duty_b = None, 0.0, 0.0
+                    held, latched, duty_a, duty_b = None, None, 0.0, 0.0
+                elif key == "l":
+                    held, latched = None, (duty_a, duty_b)
+                elif key == "c":
+                    latched = None
                 elif key in targets:
                     held, held_at = key, time.monotonic()
             next_t += period
 
             if held and time.monotonic() - held_at > args.hold_timeout:
                 held = None
-            ta, tb = targets[held] if held else (0.0, 0.0)
+            ta, tb = targets[held] if held else (latched or (0.0, 0.0))
             duty_a = approach(duty_a, ta, step)
             duty_b = approach(duty_b, tb, step)
 
@@ -199,8 +206,9 @@ def main():
             cmd.send("MotorControllerCommand", "motor_b_duty_cycle", duty_b)
 
             acks = stats.get("acks") or f"ok {stats['ok']} fail {stats['fail']}"
+            latch = f"{latched[0]:+.2f}/{latched[1]:+.2f}" if latched else "off"
             sys.stdout.write(
-                f"\r key {held or '-'}  A {duty_a:+.2f}  B {duty_b:+.2f}  "
+                f"\r key {held or '-'}  A {duty_a:+.2f}  B {duty_b:+.2f}  latch {latch}  "
                 f"sent {cmd.sent}  acks {acks}   "
             )
             sys.stdout.flush()
