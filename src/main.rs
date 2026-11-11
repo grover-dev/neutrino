@@ -23,7 +23,7 @@ const WATCHDOG_TIMEOUT_SECS: u64 = 10;
 
 fn send_telem<T: Serialize>(data: T, socket: &UdpSocket) {
     // first: convert to json
-    // second: send over udp
+    // second: send over ud p
 
     match serde_json::to_string(&data) {
         Ok(json_string) => {
@@ -35,11 +35,12 @@ fn send_telem<T: Serialize>(data: T, socket: &UdpSocket) {
 }
 
 // FIXME: Look at building a generator for blackboards + solutions for telemetry and commanding, pretty clean pattern
+//
 #[derive(Default, Debug, Copy, Clone, Serialize)]
 struct Blackboard {
     motor_telem: MotorControllerState,
     motor_command: MotorControllerCommand,
-    // digital_compass_telem: DigitalCompassTelemetry,
+    // digital_compass_telem: DigitalCompassTelemetry ,
     // digital_compass_command: DigitalCompassCommand,
     gps_telem: GpsData,
     bms_telem: DynessBmsData,
@@ -77,9 +78,9 @@ fn main() {
     // - Camera data // defer
 
     // FIXME: Add some config or something for socket coordination...
-    let telem_socket = UdpSocket::bind("127.0.0.1:34254").expect("socket failed to bind");
+    let telem_socket = UdpSocket::bind("0.0.0.0:0").expect("socket failed to bind");
     telem_socket
-        .connect("127.0.0.1:34254")
+        .connect("100.92.29.0:34254")
         .expect("socket failed to connect");
 
     let fallback_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0);
@@ -88,11 +89,12 @@ fn main() {
         .set_nonblocking(true)
         .expect("failed to mark socket as non blocking");
 
-    let response_socket = UdpSocket::bind("127.0.0.1:34256").expect("socket failed to bind");
+    let response_socket = UdpSocket::bind("0.0.0.0:0").expect("socket failed to bind");
     response_socket
-        .connect("127.0.0.1:34256")
+        .connect("100.92.29.0:34256")
         .expect("socket failed to connect");
 
+    println!("Initialization completed, running...");
     let mut is_first_run = 1;
 
     let mut blackboard = Blackboard::default();
@@ -178,6 +180,8 @@ fn main() {
         if let Some(data) = bms_data {
             blackboard.bms_telem = data;
         }
+
+        println!("here!");
 
         // step()
         // TODO: RUN MATH HERE!

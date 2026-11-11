@@ -59,6 +59,9 @@ pub struct DynessBms {
 impl DynessBms {
     pub fn new(addr: &str) -> Self {
         let socket = UdpSocket::bind(addr).expect("Failed to open socket");
+        socket
+            .set_nonblocking(true)
+            .expect("failed to mark socket as non blocking");
 
         Self {
             socket: socket,

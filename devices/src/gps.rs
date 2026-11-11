@@ -12,17 +12,21 @@ pub struct Gps {
     parser: Parser,
 }
 
+schema::schema_struct! {
 #[derive(Default, Debug, Copy, Clone, Serialize)]
 pub struct GpsData {
     latitude: f64,
     longitude: f64,
     speed_knots: f32,
-    course_deg_true: Option<f32>,
+    course_deg_true: f32,
+    course_deg_true_is_valid: bool,
     active: bool,
     // FIXME: TODO, add compass correction when/if we get one
     //       - magnetic variation will be required to correct magnetic north to true north
     //       - gps tells us the course
-    magnetic_correction: Option<f32>,
+    magnetic_correction: f32,
+    magnetic_correction_is_valid: bool,
+}
 }
 
 impl Gps {
@@ -68,13 +72,17 @@ fn parse_bytes(parser: &mut Parser, buffer: &[u8]) -> Result<GpsData, GpsError> 
     for result in parser.parse_from_bytes(buffer) {
         match result {
             Ok(ParseResult::RMC(Some(rmc))) => {
+                let course = rmc.course.clone().map(|s| s.degrees); // rust what the hell is this
                 return Ok(GpsData {
                     latitude: rmc.latitude.as_f64(),
                     longitude: rmc.longitude.as_f64(),
                     speed_knots: rmc.speed.as_knots(), // FIXME: may replace this? tbd..
-                    course_deg_true: rmc.course.clone().map(|s| s.degrees), // rust what the hell is this
-                    active: true,                                           // FIXME: delete
-                    magnetic_correction: None, // FIXME: nmea0183 is cucking me rmc.magnetic.clone().map(|s| s.degrees),
+                    course_deg_true: course.unwrap_or_default(),
+                    course_deg_true_is_valid: course.is_some(),
+                    active: true, // FIXME: delete
+                    // FIXME: nmea0183 is cucking me rmc.magnetic.clone().map(|s| s.degrees),
+                    magnetic_correction: 0.0,
+                    magnetic_correction_is_valid: false,
                 });
             }
             // The crate gives back RMC(None) when there's no fix
@@ -139,7 +147,8 @@ $GNGLL,3352.33760,N,11822.65778,W,064632.00,A,A*65\r\n";
         assert!((data.latitude - 33.872293).abs() < 1e-5);
         assert!((data.longitude - -118.377630).abs() < 1e-5);
         assert!((data.speed_knots - 0.062).abs() < 1e-3);
-        assert_eq!(data.course_deg_true, None);
+        assert!(!data.course_deg_true_is_valid);
+        assert!(!data.magnetic_correction_is_valid);
     }
 
     #[test]
