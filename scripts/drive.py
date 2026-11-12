@@ -12,7 +12,8 @@ f32 values are sent as their IEEE-754 bit pattern (main.rs: f32::from_bits).
 
 Controls (hold to drive; release ramps back to the latched values, else 0):
     w  both motors  -> +max        s  both motors -> -max
-    a  motor A      -> +max        d  motor B     -> +max
+    a  steer: A +max, B -max       d  steer: A -max, B +max
+    (--invert flips every sign above)
     l  latch current A/B duty      c  clear latch (ramps back to 0)
     space  stop now (duty 0, clears latch)
     q  quit (duty 0, motors disabled)
@@ -140,6 +141,8 @@ def main():
     ap.add_argument("--ramp", type=float, default=0.5, help="ramp rate, duty per second")
     ap.add_argument("--hold-timeout", type=float, default=0.6,
                     help="seconds without a key repeat before a key counts as released")
+    ap.add_argument("--invert", action="store_true",
+                    help="flip the sign of every motor target")
     ap.add_argument("--schema-dir", default=REPO / "generated" / "schema")
     args = ap.parse_args()
 
@@ -160,8 +163,8 @@ def main():
     threading.Thread(target=pet_loop, args=(cmd, stop), daemon=True).start()
     threading.Thread(target=ack_loop, args=(args.ack_port, stats, stop), daemon=True).start()
 
-    m = args.max
-    targets = {"w": (m, m), "s": (-m, -m), "a": (m, 0.0), "d": (0.0, m)}
+    m = -args.max if args.invert else args.max
+    targets = {"w": (m, m), "s": (-m, -m), "a": (m, -m), "d": (-m, m)}
     step = args.ramp / RATE_HZ
     duty_a = duty_b = 0.0
     held, held_at = None, 0.0
@@ -170,7 +173,8 @@ def main():
     fd = sys.stdin.fileno()
     old_tty = termios.tcgetattr(fd)
     tty.setcbreak(fd)  # keeps Ctrl-C working
-    print(f"driving {args.host}:{args.port}  max={m}  ramp={args.ramp}/s  "
+    print(f"driving {args.host}:{args.port}  max={args.max}  ramp={args.ramp}/s  "
+          f"{'INVERTED  ' if args.invert else ''}"
           "[wasd] drive  [l] latch  [c] clear  [space] stop  [q] quit")
     try:
         period = 1.0 / RATE_HZ
