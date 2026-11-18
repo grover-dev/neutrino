@@ -1,6 +1,6 @@
 pub mod bms;
-pub mod cpu;
 pub mod gps;
+pub mod jetson;
 pub mod mppt;
 pub mod pi_pico;
 pub mod pico_digital_compass;
