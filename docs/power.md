@@ -5,13 +5,13 @@ flowchart TD
     Solar[Solar] -->|0 - 36 V| MPPT[MPPT]
     MPPT -->|10 - 14.8 V| BUS(( ))
     BUS <--> Battery[Battery]
-    BUS <--> Motors[Motors]
+    BUS --> Motors[Motors]
     BUS --> Boost[Boost]
     Boost -->|19 V| R19(( ))
     R19 --> Starlink[Starlink]
     R19 --> Jetson[Jetson]
     Jetson -->|5 V| R5(( ))
-    R5 <--> Compass[Digital Compass]
-    R5 <--> GPS[GPS]
+    R5 --> Compass[Digital Compass]
+    R5 --> GPS[GPS]
     R5 --> MC[Motor Controller]
 ```
